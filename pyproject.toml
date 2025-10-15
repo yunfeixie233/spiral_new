@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spiral"
+dynamic = ["version"]
+description = ''
+readme = "README.md"
+requires-python = "~=3.10"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Bo Liu", email = "benjaminliu.eecs@gmail.com" },
+  { name = "Zichen Liu", email = "lkevinzc@gmail.com" },
+  { name = "Simon Yu", email = "simon011130@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "textblob",
+  "textarena==0.6.4",
+  "latex2sympy2",
+  "tabulate",
+  "human_eval",
+  "antlr4-python3-runtime==4.13.2"
+]
+
+[project.urls]
+Documentation = "https://github.com/spiral-ai/spiral#readme"
+Issues = "https://github.com/spiral-ai/spiral/issues"
+Source = "https://github.com/spiral-ai/spiral"
+
+[tool.hatch.version]
+path = "spiral/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:spiral tests}"
+
+[tool.coverage.run]
+source_pkgs = ["spiral", "tests"]
+branch = true
+parallel = true
+omit = [
+  "spiral/__about__.py",
+]
+
+[tool.coverage.paths]
+spiral = ["spiral", "*/spiral/spiral"]
+tests = ["tests", "*/spiral/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
