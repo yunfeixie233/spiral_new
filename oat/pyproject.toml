@@ -1,0 +1,173 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oat-llm"
+dynamic = ["version"]
+description = 'Online AlignmenT (OAT) for LLMs.'
+readme = "README.md"
+requires-python = "~=3.10"
+keywords = ["rlhf", "llm reasoning", "llm", "ai-alignment", "rl", "bandit", "ai", "sample-efficiency"]
+authors = [
+  { name = "Zichen Liu", email = "liuzc@sea.com" },
+  { name = "Xinyi Wan", email = "wanxy@sea.com" },
+  { name = "Changyu Chen", email = "chency@sea.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "accelerate",
+  "bitsandbytes",
+  "datasets",
+  "deepspeed==0.16.8",
+  "dm-launchpad[tensorflow]",
+  "einops",
+  "flash-attn==2.7.4.post1",
+  "fire",
+  "httpx",
+  "jsonlines",
+  "loralib",
+  "ml_collections",
+  "mosec",
+  "msgspec",
+  "optimum",
+  "packaging",
+  "peft==0.15.2",
+  "protobuf==3.20.0",
+  "pyarrow>=0.6.1,<12",
+  "python-Levenshtein==0.25.1",
+  "scipy",
+  "torchmetrics",
+  "tqdm",
+  "tyro",
+  "transformers==4.51.3",
+  "transformers_stream_generator",
+  "vllm==0.8.4",
+  "rich",
+  "wandb",
+  "wheel",
+  "numpy==1.26.4",
+  "math-verify[antlr4_13_2]",
+  "pylatexenc==2.10",
+]
+
+[project.urls]
+Documentation = "https://github.com/sail-sg/oat#readme"
+Issues = "https://github.com/sail-sg/oat/issues"
+Source = "https://github.com/sail-sg/oat"
+
+[project.license]
+text = "Apache-2.0"
+
+[tool.hatch.version]
+path = "oat/__about__.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/examples",
+  "/k8s",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["oat"]
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:oat tests}"
+
+[tool.coverage.run]
+source_pkgs = ["oat", "tests"]
+branch = true
+parallel = true
+omit = [
+  "oat/__about__.py",
+]
+
+[tool.coverage.paths]
+oat = ["oat", "*/oat/oat"]
+tests = ["tests", "*/oat/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+[tool.pylint.master]
+load-plugins = "pylint.extensions.docparams,pylint.extensions.docstyle,pylint.extensions.no_self_use"
+default-docstring-type = "google"
+ignore-paths = ["rosmo/__about__.py"]
+
+[tool.pylint.format]
+max-line-length = 88
+indent-after-paren = 4
+indent-string = "    "
+
+[tool.pylint.imports]
+known-third-party = "wandb"
+
+[tool.pylint.reports]
+output-format = "colorized"
+reports = "no"
+score = "yes"
+max-args = 7
+
+[tool.pylint.messages_control]
+disable = ["W0201", "W0108", "W0212", "W1514", "R0902", "R0903", "R0913", "R0914", "R0915", "R1719",
+"R1732", "R0801", "C0103", "C3001", "C0116", "W0106", "R0912", "R1702", "W0640", "W1203",
+"R0402"]
+
+[tool.yapf]
+based_on_style = "yapf"
+spaces_before_comment = 4
+dedent_closing_brackets = true
+column_limit = 88
+continuation_indent_width = 4
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+indent = 4
+line_length = 88
+known_third_party = "wandb"
+
+[tool.mypy]
+files = "rosmo/**/*.py"
+allow_redefinition = true
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+pretty = true
+show_error_codes = true
+show_error_context = true
+show_traceback = true
+strict_equality = true
+strict_optional = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_configs = true
+
+[tool.pydocstyle]
+ignore = ["D100", "D102", "D104", "D105", "D107", "D203", "D213", "D401", "D402"]
+
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+]
