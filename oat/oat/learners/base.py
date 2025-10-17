@@ -536,11 +536,6 @@ class LearnerBase(abc.ABC, DistributedLauncher):
             return True
 
     def eval_and_log(self, train_info, eval=False, save=False):
-        # eval
-        eval_info = {}
-        if (self.args.eval_steps > 0 and eval) or self._should_do(self.args.eval_steps):
-            eval_info = self.evaluate(self.eval_prompts_dataloader, self.steps)
-
         # save
         if (self.args.save_steps > 0 and save) or (
             self.steps > 0
@@ -563,6 +558,11 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                     max_num=self.args.max_save_num,
                     max_mem=self.args.max_save_mem,
                 )
+
+        # eval
+        eval_info = {}
+        if (self.args.eval_steps > 0 and eval) or self._should_do(self.args.eval_steps):
+            eval_info = self.evaluate(self.eval_prompts_dataloader, self.steps)
 
         # logs
         if eval_info or self.steps % self.args.logging_steps == 0:

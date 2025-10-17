@@ -205,30 +205,50 @@ class SelfPlayActor(PPOActor):
         info = {}
 
         # Play multiple games to generate trajectory data
-        all_trajectories = []
         st = time.time()
-
-        for i in range(int(1e9)):
-            # Shuffle environments to mitigate order bias
-            env_ids = copy.deepcopy(self.args.env_ids)
-            random.shuffle(env_ids)
-            for env_id in env_ids:
+        
+        # Calculate trajectories per environment
+        total_trajectories = len(prompts)
+        num_envs = len(self.args.env_ids)
+        base_trajectories_per_env = total_trajectories // num_envs
+        remainder = total_trajectories % num_envs
+        
+        # Distribute trajectories evenly, with remainder distributed to first few envs
+        trajectories_per_env = {}
+        for idx, env_id in enumerate(self.args.env_ids):
+            trajectories_per_env[env_id] = base_trajectories_per_env + (1 if idx < remainder else 0)
+        
+        logging.info(f"Trajectories per environment: {trajectories_per_env}")
+        
+        # Collect trajectories for each environment separately
+        all_trajectories = []
+        env_ids = copy.deepcopy(self.args.env_ids)
+        random.shuffle(env_ids)
+        
+        for env_id in env_ids:
+            target_count = trajectories_per_env[env_id]
+            env_trajectories = []
+            
+            for i in range(int(1e9)):
                 game_trajectories = self.play_game_vectorized(
                     env_id=env_id, seed=int(time.time_ns())
                 )
-                all_trajectories.extend(game_trajectories)
-
-            if len(all_trajectories) >= len(prompts):
-                subsample_indices = np.random.choice(
-                    len(all_trajectories),
-                    len(prompts),
-                    replace=False,
-                )
-                all_trajectories = [all_trajectories[si] for si in subsample_indices]
-                break
+                env_trajectories.extend(game_trajectories)
+                
+                if len(env_trajectories) >= target_count:
+                    # Subsample to exact target count
+                    subsample_indices = np.random.choice(
+                        len(env_trajectories),
+                        target_count,
+                        replace=False,
+                    )
+                    env_trajectories = [env_trajectories[si] for si in subsample_indices]
+                    break
+            
+            all_trajectories.extend(env_trajectories)
+            logging.info(f"Collected {len(env_trajectories)} trajectories from {env_id}")
 
         info["actor/game_time"] = time.time() - st
-        info["actor/num_games"] = i + 1
         info["actor/num_trajectories"] = len(all_trajectories)
 
         # Log rewards statistics
