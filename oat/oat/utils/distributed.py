@@ -16,6 +16,7 @@
 
 import errno
 import logging
+import os
 import socket
 from datetime import timedelta
 from typing import Any, Optional, Union
@@ -82,13 +83,25 @@ def init_process_group(
         backend = Backend("undefined")
 
     if timeout is None:
-        timeout = default_pg_timeout
+        # Check if NCCL_TIMEOUT environment variable is set
+        nccl_timeout_ms = os.environ.get('NCCL_TIMEOUT', None)
+        if nccl_timeout_ms is not None:
+            # Convert from milliseconds to timedelta
+            timeout_seconds = int(nccl_timeout_ms) / 1000.0
+            timeout = timedelta(seconds=timeout_seconds)
+            logging.info(f"[NCCL Config] Using NCCL_TIMEOUT from environment: {nccl_timeout_ms}ms = {timeout}")
+        else:
+            timeout = default_pg_timeout
+            logging.info(f"[NCCL Config] Using default timeout: {timeout}")
+    
+    logging.info(f"[NCCL Config] Process group timeout set to: {timeout} (default_pg_timeout={default_pg_timeout})")
 
     # backward compatible API
     if store is None:
         rendezvous_iterator = rendezvous(init_method, rank, world_size, timeout=timeout)
         store, rank, world_size = next(rendezvous_iterator)
         store.set_timeout(timeout)
+        logging.info(f"[NCCL Config] Store timeout set to: {timeout}")
 
         # Use a PrefixStore to avoid accidental overrides of keys used by
         # different systems (e.g. RPC) in case the store is multi-tenant.

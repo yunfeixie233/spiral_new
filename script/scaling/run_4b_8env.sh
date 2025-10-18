@@ -15,6 +15,11 @@
 # Common =========
 export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"):$LD_LIBRARY_PATH
 export NCCL_CUMEM_ENABLE=0
+export NCCL_TIMEOUT=7200000
+
+# Verify NCCL timeout is set
+echo "NCCL_TIMEOUT is set to: $NCCL_TIMEOUT milliseconds"
+
 export LP_DEBUG=1
 export LP_LOG_LEVEL=DEBUG
 

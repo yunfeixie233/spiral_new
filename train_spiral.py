@@ -897,7 +897,7 @@ class SelfPlayLearner(PPOLearner):
     def process_feedback_data(self, data_list: List[TransitionData]):
         """Process collected feedback data, adding it to buffer."""
 
-        logging.info("adding data into buffer")
+        # logging.info("adding data into buffer")
 
         # Add to buffer
         self.pi_buffer.extend(data_list)

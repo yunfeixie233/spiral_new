@@ -15,6 +15,11 @@
 # Common =========
 export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"):$LD_LIBRARY_PATH
 export NCCL_CUMEM_ENABLE=0
+export NCCL_TIMEOUT=3600000
+
+# Verify NCCL timeout is set
+echo "NCCL_TIMEOUT is set to: $NCCL_TIMEOUT milliseconds"
+
 export LP_DEBUG=1
 export LP_LOG_LEVEL=DEBUG
 
@@ -25,8 +30,8 @@ pkill -u ubuntu python
 python train_spiral.py \
     --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 \
     --use_llm_obs_wrappers True True False False \
-    --eval_env_ids TicTacToe-v1 KuhnPoker-v1 \
-    --eval_use_llm_obs_wrappers False True \
+    --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1\
+    --eval_use_llm_obs_wrappers  True True False False  \
     --eval_split all \
     --gamma 1 \
     --gpus 8 \
@@ -56,15 +61,16 @@ python train_spiral.py \
     --temperature 1.0 \
     --top_p 1 \
     --eval_steps 32 \
-    --save_steps 32 \
-    --eval_games 0 \
+    --save_steps 16 \
+    --eval_games 8 \
     --eval_temperature 0.6 \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \
     --max_train 51200 \
     --max_save_num 5 \
     --use-wb \
-    --wb-run-name spiral-qwen3-4b-base-kp-ttt-4k-self-play \
+    --wb-run-name spiral-qwen3-4b-base-4env-self-play \
     --wb-project spiral \
-    --debug \
-    --save-ckpt 
+    --save-ckpt \
+    --resume-dir ./oat-output/spiral-qwen3-4b-base-4env-self-play_1018T0537/checkpoints \
+    --resume-tag step_00064

@@ -142,9 +142,9 @@ class RLLearner(LearnerBase):
             self.args.generate_max_length,
             self.strategy,
         )
-        if learning_round == 1:
-            self.strategy.print("Training example")
-            self.strategy.print(dataset[0])
+        # if learning_round == 1:
+        #     self.strategy.print("Training example")
+        #     self.strategy.print(dataset[0])
 
         dataloader = DataLoader(
             dataset,

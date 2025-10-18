@@ -232,9 +232,9 @@ class PPOLearner(RLLearner):
             self.tokenizer,
             self.strategy,
         )
-        if learning_round == 1:
-            self.strategy.print("Training example")
-            self.strategy.print(dataset[0])
+        # if learning_round == 1:
+        #     self.strategy.print("Training example")
+        #     self.strategy.print(dataset[0])
 
         # Load all buffered data, and PPO will iterate through inner loops.
         dataloader = DataLoader(

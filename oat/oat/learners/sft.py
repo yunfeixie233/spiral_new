@@ -115,9 +115,9 @@ class SFTLearner(OfflineLearner):
             tokenizer=self.tokenizer,
             strategy=self.strategy,
         )
-        if learning_round == 1:
-            self.strategy.print("Training example")
-            self.strategy.print(dataset[0])
+        # if learning_round == 1:
+        #     self.strategy.print("Training example")
+        #     self.strategy.print(dataset[0])
         dataloader = DataLoader(
             dataset,
             batch_size=self.args.train_batch_size_per_device,
