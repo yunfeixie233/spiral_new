@@ -116,6 +116,10 @@ class SelfPlayArgs(PPOArgs):
     eval_output_key: str = "answer"
     eval_split: str = "all"
 
+    # Evaluation control
+    skip_game_eval: bool = False  # Skip game evaluation if True
+    skip_dataset_eval: bool = False  # Skip dataset evaluation if True
+
 
 """
 2. Instantiate the actor based on Oat's PPOActor, which generates the self-play experiences.
@@ -923,112 +927,120 @@ class SelfPlayLearner(PPOLearner):
         assert not self.pi_beta_lags_behind, "pi beta lags behind for evaluation"
         self._pre_evaluate()
 
-        self.strategy.print(f"Start evaluating on games at step {steps}")
+        game_metrics_dict = {}
+        non_game_metrics = {}
 
         # 1) Game eval.
-        t0 = time.time()
-        # ------------------------------------------------------------------
-        # Initialize metrics tracking
-        # ------------------------------------------------------------------
-        eval_env_ids = self.args.eval_env_ids
-        eval_opponent_names = self.args.eval_opponent_names
-        game_metrics = EvaluationMetrics(
-            eval_env_ids, eval_opponent_names
-        )  # Initialize metrics across all ranks
+        if not self.args.skip_game_eval:
+            self.strategy.print(f"Start evaluating on games at step {steps}")
+            t0 = time.time()
+            # ------------------------------------------------------------------
+            # Initialize metrics tracking
+            # ------------------------------------------------------------------
+            eval_env_ids = self.args.eval_env_ids
+            eval_opponent_names = self.args.eval_opponent_names
+            game_metrics = EvaluationMetrics(
+                eval_env_ids, eval_opponent_names
+            )  # Initialize metrics across all ranks
 
-        # ------------------------------------------------------------------
-        # Rank 0 distributes evaluation workloads to all ranks then collects and populates metrics
-        # ------------------------------------------------------------------
-        if self.strategy.is_rank_0():
-            total_games = self.args.eval_games
+            # ------------------------------------------------------------------
+            # Rank 0 distributes evaluation workloads to all ranks then collects and populates metrics
+            # ------------------------------------------------------------------
+            if self.strategy.is_rank_0():
+                total_games = self.args.eval_games
 
-            # Generate evaluation runs
-            eval_runs_list = []
-            for env_id in eval_env_ids:
-                for opponent_name in eval_opponent_names:
-                    if opponent_name == "random":
-                        try:
-                            RandomAgent(env_id)
-                        except NotImplementedError:
-                            logging.warning(
-                                f"Random opponent is not supported for {env_id}, skipping"
-                            )
-                            continue
+                # Generate evaluation runs
+                eval_runs_list = []
+                for env_id in eval_env_ids:
+                    for opponent_name in eval_opponent_names:
+                        if opponent_name == "random":
+                            try:
+                                RandomAgent(env_id)
+                            except NotImplementedError:
+                                logging.warning(
+                                    f"Random opponent is not supported for {env_id}, skipping"
+                                )
+                                continue
 
-                    for game_nr in range(total_games):
-                        eval_runs_list.append((env_id, opponent_name, game_nr))
+                        for game_nr in range(total_games):
+                            eval_runs_list.append((env_id, opponent_name, game_nr))
 
-            # Run evaluation
-            futs = []
-            progress_bar = tqdm(range(len(eval_runs_list)), desc="Evaluating")
-            random.shuffle(eval_runs_list)
+                # Run evaluation
+                futs = []
+                progress_bar = tqdm(range(len(eval_runs_list)), desc="Evaluating")
+                random.shuffle(eval_runs_list)
 
-            for i, (env_id, opponent_name, game_nr) in enumerate(eval_runs_list):
-                actor = self.actors[i % len(self.actors)]
-                futs.append(actor.futures.run_eval_episode(env_id, opponent_name))
+                for i, (env_id, opponent_name, game_nr) in enumerate(eval_runs_list):
+                    actor = self.actors[i % len(self.actors)]
+                    futs.append(actor.futures.run_eval_episode(env_id, opponent_name))
 
-                # Process results in batches
-                if len(futs) == len(self.actors) or i == len(eval_runs_list) - 1:
-                    for fut in futs:
-                        result = fut.result()
-                        game_metrics.add_result(result)
-                        progress_bar.update(1)
+                    # Process results in batches
+                    if len(futs) == len(self.actors) or i == len(eval_runs_list) - 1:
+                        for fut in futs:
+                            result = fut.result()
+                            game_metrics.add_result(result)
+                            progress_bar.update(1)
 
-                    futs.clear()
+                        futs.clear()
 
-            game_metrics.aggregate()
+                game_metrics.aggregate()
 
-        dist.barrier()
-        game_metrics_dict = game_metrics.to_dict()
-        game_metrics_dict["eval/game_eval_time"] = time.time() - t0
-        game_metrics_dict = self.strategy.broadcast(game_metrics_dict)
+            dist.barrier()
+            game_metrics_dict = game_metrics.to_dict()
+            game_metrics_dict["eval/game_eval_time"] = time.time() - t0
+            game_metrics_dict = self.strategy.broadcast(game_metrics_dict)
+        else:
+            self.strategy.print(f"Skipping game evaluation at step {steps}")
 
         self._post_evaluate()
 
         # 2) Single-turn verifiable reasoning eval.
-        t0 = time.time()
-        non_game_metrics = {}
-        accuracies = []
-        scores = []
-        lens = []
-        for benchmark_name, dataset in self.eval_dataset_dict.items():
-            eval_prompts_dataloader = DataLoader(
-                dataset,
-                batch_size=self.args.eval_batch_size,
-                shuffle=False,
-                drop_last=False,
-                collate_fn=self.eval_dataloader_collate_fn,
-            )
-            metrics = super().evaluate(
-                eval_prompts_dataloader, f"{steps}_{benchmark_name}"
-            )
-            metrics = {
-                k: v
-                for k, v in metrics.items()
-                if k
-                in [
-                    "eval/accuracy",
-                    "eval/score",
-                    "eval/response_tok_len",
-                    "eval/elapse",
-                ]
-            }
+        if not self.args.skip_dataset_eval:
+            self.strategy.print(f"Start evaluating on datasets at step {steps}")
+            t0 = time.time()
+            accuracies = []
+            scores = []
+            lens = []
+            for benchmark_name, dataset in self.eval_dataset_dict.items():
+                eval_prompts_dataloader = DataLoader(
+                    dataset,
+                    batch_size=self.args.eval_batch_size,
+                    shuffle=False,
+                    drop_last=False,
+                    collate_fn=self.eval_dataloader_collate_fn,
+                )
+                metrics = super().evaluate(
+                    eval_prompts_dataloader, f"{steps}_{benchmark_name}"
+                )
+                metrics = {
+                    k: v
+                    for k, v in metrics.items()
+                    if k
+                    in [
+                        "eval/accuracy",
+                        "eval/score",
+                        "eval/response_tok_len",
+                        "eval/elapse",
+                    ]
+                }
+                non_game_metrics.update(
+                    {
+                        k.replace("eval/", f"eval/general/{benchmark_name}/"): v
+                        for k, v in metrics.items()
+                    }
+                )
+                accuracies.append(metrics["eval/accuracy"])
+                scores.append(metrics["eval/score"])
+                lens.append(metrics["eval/response_tok_len"])
             non_game_metrics.update(
                 {
-                    k.replace("eval/", f"eval/general/{benchmark_name}/"): v
-                    for k, v in metrics.items()
+                    "eval/general/average/accuracy": np.mean(accuracies),
+                    "eval/general/average/score": np.mean(scores),
+                    "eval/general/average/response_tok_len": np.mean(lens),
                 }
             )
-            accuracies.append(metrics["eval/accuracy"])
-            scores.append(metrics["eval/score"])
-            lens.append(metrics["eval/response_tok_len"])
-        non_game_metrics.update(
-            {
-                "eval/general/average/accuracy": np.mean(accuracies),
-                "eval/general/average/score": np.mean(scores),
-                "eval/general/average/response_tok_len": np.mean(lens),
-            }
-        )
+        else:
+            self.strategy.print(f"Skipping dataset evaluation at step {steps}")
 
         # ------------------------------------------------------------------
         # Synchronize metrics across all ranks

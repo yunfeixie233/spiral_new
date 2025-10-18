@@ -23,6 +23,9 @@ export LP_LOG_LEVEL=DEBUG
 # New environments: Briscola, ColonelBlotto, IndianPoker, TwoDollar
 # Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
 # Set `--eval_opponent_names google/gemini-2.0-flash-lite-001` if you have OpenRouter access.
+# Evaluation control:
+#   --skip_game_eval to skip game evaluation (speeds up training)
+#   --skip_dataset_eval to skip dataset evaluation (speeds up training)
 pkill -u ubuntu python
 python train_spiral.py \
     --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 Briscola-v1 ColonelBlotto-v1 IndianPoker-v1 TwoDollar-v1 \
@@ -59,7 +62,7 @@ python train_spiral.py \
     --top_p 1 \
     --eval_steps 32 \
     --save_steps 32 \
-    --eval_games 0 \
+    --eval_games 8 \
     --eval_temperature 0.6 \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \

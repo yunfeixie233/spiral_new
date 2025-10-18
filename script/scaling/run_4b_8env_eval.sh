@@ -21,16 +21,17 @@ export LP_LOG_LEVEL=DEBUG
 # Notes ==========
 # Training on 8 environments: 4 original + 4 new
 # New environments: Briscola, ColonelBlotto, IndianPoker, TwoDollar
-# Evaluation: Against Gemini opponent (requires OpenRouter API key)
-# To evaluate against random instead: --eval_opponent_names random
-# To evaluate against both: --eval_opponent_names random google/gemini-2.0-flash-lite-001
+# Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
+# Set `--eval_opponent_names google/gemini-2.0-flash-lite-001` if you have OpenRouter access.
+# Evaluation control:
+#   --skip_game_eval to skip game evaluation (speeds up training)
+#   --skip_dataset_eval to skip dataset evaluation (speeds up training)
 pkill -u ubuntu python
 python train_spiral.py \
     --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 Briscola-v1 ColonelBlotto-v1 IndianPoker-v1 TwoDollar-v1 \
     --use_llm_obs_wrappers True True False False True True True True \
-    --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 Briscola-v1 ColonelBlotto-v1 IndianPoker-v1 TwoDollar-v1 \
-    --eval_use_llm_obs_wrappers  True True False False True True True True  \
-    --eval_opponent_names google/gemini-2.0-flash-lite-001 \
+    --eval_env_ids TicTacToe-v1 KuhnPoker-v1 Briscola-v1 ColonelBlotto-v1 \
+    --eval_use_llm_obs_wrappers False True True True \
     --eval_split all \
     --gamma 1 \
     --gpus 8 \
@@ -68,6 +69,8 @@ python train_spiral.py \
     --max_train 51200 \
     --max_save_num 5 \
     --use-wb \
-    --wb-run-name spiral-qwen3-4b-base-8env-eval \
-    --wb-project spiral 
+    --wb-run-name spiral-qwen3-4b-base-8env-self-play \
+    --wb-project spiral \
+    --save-ckpt \
+    --skip_dataset_eval 
 

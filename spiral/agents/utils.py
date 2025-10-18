@@ -68,7 +68,7 @@ def simple_negotiation_parse_available_actions(observation: str):
     our_player_pattern = r"You are Player (\d+)"
     our_player_match = re.search(our_player_pattern, observation)
     if not our_player_match:
-        return ["I'll think about my strategy."]
+        return []
 
     our_player_id = int(our_player_match.group(1))
 
@@ -141,7 +141,7 @@ def briscola_parse_available_actions(observation: str):
         num_cards = len(card_lines)
         return [f"[play {i}]" for i in range(1, num_cards + 1)]
     
-    return ["[play 1]", "[play 2]", "[play 3]"]
+    return []
 
 
 def colonel_blotto_parse_available_actions(observation: str):
@@ -173,7 +173,54 @@ def colonel_blotto_parse_available_actions(observation: str):
     
     valid_actions = valid_actions[::max(1, len(valid_actions) // 50)]
     
-    return valid_actions if valid_actions else ["[A7 B7 C6]"]
+    return valid_actions
+
+
+def indian_poker_parse_available_actions(observation: str):
+    """
+    Parse available actions for Indian Poker game.
+    
+    The game announces possible actions in one of two formats:
+    - No bet to call: '[check]', '[bet X]'
+    - Bet to call: '[call]' (cost X), '[raise X]', '[fold]'
+    
+    For '[bet X]' and '[raise X]', we generate reasonable amounts (1-10).
+    
+    Args:
+        observation: The current game observation
+        
+    Returns:
+        List of valid action strings
+    """
+    valid_actions = []
+    
+    # Find the line with "Your possible actions:"
+    for line in observation.split('\n'):
+        if 'possible actions' in line.lower():
+            # Check which actions are available
+            if '[check]' in line:
+                valid_actions.append('[check]')
+            
+            if '[call]' in line:
+                valid_actions.append('[call]')
+            
+            if '[fold]' in line:
+                valid_actions.append('[fold]')
+            
+            # For '[bet X]' or '[raise X]', generate concrete amounts
+            if '[bet X]' in line or '[bet' in line.lower():
+                # Generate bet amounts from 1 to 10
+                for amount in range(1, 11):
+                    valid_actions.append(f'[bet {amount}]')
+            
+            if '[raise X]' in line or '[raise' in line.lower():
+                # Generate raise amounts from 1 to 10
+                for amount in range(1, 11):
+                    valid_actions.append(f'[raise {amount}]')
+            
+            break
+    
+    return valid_actions
 
 
 _VALID_ACTION_PARSER = {
@@ -184,6 +231,7 @@ _VALID_ACTION_PARSER = {
     "TicTacToe-v1": tic_tac_toe_parse_available_moves,
     "Briscola-v1": briscola_parse_available_actions,
     "ColonelBlotto-v1": colonel_blotto_parse_available_actions,
+    "IndianPoker-v1": indian_poker_parse_available_actions,
 }
 
 
