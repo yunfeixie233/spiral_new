@@ -52,11 +52,7 @@ class SimpleNegotiationEnv(ta.Env):
             "  - [Accept]: To accept an incoming offer.\n"
             "  - [Deny]: To deny an incoming offer (default).\n"
             "YOU CAN INCLUDE ADDITIONAL TEXT BEFORE AND/OR AFTER THESE TOKENS.\n"
-            '    Example: "I\'m open to negotiation."\n\n'
-            "IMPORTANT: Your response must end with exactly ONE valid action from the list above.\n"
-            "Do NOT end with resource descriptions, calculations, or other text.\n"
-            "Valid action examples: [Accept], [Deny], [Offer: 2 Wood -> 1 Gold]\n"
-            "Invalid endings: descriptions like '11 Wood, 7 Gold' or calculations.\n"
+            '    Example: "I\'m open to negotiation."\n'
         )
         if self.state.max_turns:
             prompt += f"The game lasts for {self.state.max_turns} turns in total.\n"
