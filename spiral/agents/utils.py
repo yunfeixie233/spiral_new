@@ -42,6 +42,23 @@ def tic_tac_toe_parse_available_moves(observation: str):
 
     return available_moves
 
+def pig_dice_parse_available_actions(observation: str):
+    """
+    Parse available actions for Pig Dice game.
+    
+    The game sends messages like: "Available actions: '[roll]' or '[hold]'"
+    PigDice always has the same two actions available: roll and hold.
+    The environment accepts both full forms and shorthand forms.
+    
+    Args:
+        observation: The current game observation
+        
+    Returns:
+        List of valid action strings including both full and shorthand forms
+    """
+    # PigDice always has the same action space throughout the game
+    # Return all valid variations that the environment accepts
+    return ["[roll]", "[r]", "[hold]", "[h]"]
 
 def simple_negotiation_parse_available_actions(observation: str):
     valid_actions = []
@@ -112,10 +129,65 @@ def simple_negotiation_parse_available_actions(observation: str):
     return valid_actions if valid_actions else ["I'll think about my options."]
 
 
+def briscola_parse_available_actions(observation: str):
+    """
+    Parse available actions for Briscola card game.
+    
+    Actions are always [play X] where X is 1 to hand_size.
+    Hand size is typically 2-3 cards.
+    """
+    hand_pattern = r"Your hand:\s+((?:\s+\d+\.\s+[^\n]+\n?)+)"
+    hand_match = re.search(hand_pattern, observation)
+    
+    if hand_match:
+        hand_text = hand_match.group(1)
+        card_lines = [line.strip() for line in hand_text.split('\n') if line.strip()]
+        num_cards = len(card_lines)
+        return [f"[play {i}]" for i in range(1, num_cards + 1)]
+    
+    return ["[play 1]", "[play 2]", "[play 3]"]
+
+
+def colonel_blotto_parse_available_actions(observation: str):
+    """
+    Parse available actions for Colonel Blotto.
+    
+    Actions are allocations like [A4 B2 C14] where units must sum to total_units.
+    This generates a reasonable subset of valid allocations.
+    """
+    units_pattern = r"Units to allocate:\s*(\d+)"
+    fields_pattern = r"Available fields:\s*([A-Z, ]+)"
+    
+    units_match = re.search(units_pattern, observation)
+    fields_match = re.search(fields_pattern, observation)
+    
+    total_units = int(units_match.group(1)) if units_match else 20
+    fields_str = fields_match.group(1) if fields_match else "A, B, C"
+    field_names = [f.strip() for f in fields_str.split(',')]
+    
+    valid_actions = []
+    
+    if len(field_names) == 3:
+        for a in range(0, total_units + 1, 2):
+            for b in range(0, total_units - a + 1, 2):
+                c = total_units - a - b
+                if c >= 0:
+                    action = f"[{field_names[0]}{a} {field_names[1]}{b} {field_names[2]}{c}]"
+                    valid_actions.append(action)
+    
+    valid_actions = valid_actions[::max(1, len(valid_actions) // 50)]
+    
+    return valid_actions if valid_actions else ["[A7 B7 C6]"]
+
+
 _VALID_ACTION_PARSER = {
     "TicTacToe-v0": tic_tac_toe_parse_available_moves,
     "KuhnPoker-v1": kuhn_poker_parse_available_actions,
     "SimpleNegotiation-v1": simple_negotiation_parse_available_actions,
+    "PigDice-v1": pig_dice_parse_available_actions,
+    "TicTacToe-v1": tic_tac_toe_parse_available_moves,
+    "Briscola-v1": briscola_parse_available_actions,
+    "ColonelBlotto-v1": colonel_blotto_parse_available_actions,
 }
 
 

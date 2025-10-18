@@ -388,7 +388,8 @@ class SelfPlayActor(PPOActor):
         for i in range(self.args.num_envs):
             if vec_rewards[i] is None:
                 assert vec_done[i]
-                vec_rewards[i] = vec_envs[i].close()
+                rewards_dict, game_info = vec_envs[i].close()
+                vec_rewards[i] = rewards_dict
         # Dump the game state for debugging.
         if (
             self.args.dump_game_state_every > 0
@@ -495,7 +496,12 @@ class SelfPlayActor(PPOActor):
                     for i, item in enumerate(response_logprobs)
                 ]
 
-            if env_id in ["DontSayIt-v0", "SimpleNegotiation-v1"]:  # DontSayIt-v0 don't have fixed action space
+            # Chat-based extraction for environments with infinite/unbounded action spaces
+            # - SimpleNegotiation-v1: unbounded offer amounts
+            # - IndianPoker-v1: betting amounts 1 to chip_count
+            # - TwoDollar-v1: proposal amounts $0.00 to $2.00
+            # All other environments use finite action space parsing
+            if env_id in ["DontSayIt-v0", "SimpleNegotiation-v1", "IndianPoker-v1", "TwoDollar-v1"]:
                 clean_action = self.extract_chat_action(raw_action)
             else:
                 action_space = get_valid_action_parser(env_id)(observation)
@@ -774,7 +780,8 @@ class SelfPlayActor(PPOActor):
                 rewards = {0: 1, 1: 1}
                 rewards[pid] = -1
         if "rewards" not in locals():
-            rewards = env.close()
+            rewards_dict, game_info = env.close()
+            rewards = rewards_dict
 
         if invalid_rewards:
             invalid_move = (invalid_rewards[0] == 1 and invalid_rewards[1] == -1) or (

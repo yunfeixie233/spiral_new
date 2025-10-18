@@ -1,0 +1,73 @@
+# Copyright 2025 SPIRAL Team. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Common =========
+export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"):$LD_LIBRARY_PATH
+export NCCL_CUMEM_ENABLE=0
+export LP_DEBUG=1
+export LP_LOG_LEVEL=DEBUG
+
+# Notes ==========
+# Training on 8 environments: 4 original + 4 new
+# New environments: Briscola, ColonelBlotto, IndianPoker, TwoDollar
+# Evaluation: Against Gemini opponent (requires OpenRouter API key)
+# To evaluate against random instead: --eval_opponent_names random
+# To evaluate against both: --eval_opponent_names random google/gemini-2.0-flash-lite-001
+pkill -u ubuntu python
+python train_spiral.py \
+    --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 Briscola-v1 ColonelBlotto-v1 IndianPoker-v1 TwoDollar-v1 \
+    --use_llm_obs_wrappers True True False False True True True True \
+    --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 Briscola-v1 ColonelBlotto-v1 IndianPoker-v1 TwoDollar-v1 \
+    --eval_use_llm_obs_wrappers  True True False False True True True True  \
+    --eval_opponent_names google/gemini-2.0-flash-lite-001 \
+    --eval_split all \
+    --gamma 1 \
+    --gpus 8 \
+    --gradient-checkpointing \
+    --num_samples 1 \
+    --rollout_batch_size 128 \
+    --dump_game_state_every 1 \
+    --num_envs 1 \
+    --rollout_batch_size_per_device 16 \
+    --pi_buffer_maxlen_per_device 16 \
+    --pretrain ./checkpoint/Qwen3-4B-Base \
+    --enable_prefix_caching \
+    --collocate \
+    --vllm_sleep \
+    --vllm_gpu_ratio 0.45 \
+    --rnd-seed \
+    --learning_rate 0.000001 \
+    --lr_scheduler constant \
+    --lr_warmup_ratio 0 \
+    --num_ppo_epochs 2 \
+    --train_batch_size 128 \
+    --train_batch_size_per_device 1 \
+    --beta 0 \
+    --max_model_len 12800 \
+    --generate_max_length 4096 \
+    --max_context_length 32768 \
+    --temperature 1.0 \
+    --top_p 1 \
+    --eval_steps 32 \
+    --save_steps 32 \
+    --eval_games 8 \
+    --eval_temperature 0.6 \
+    --eval_top_p 0.95 \
+    --eval_generate_max_length 4096 \
+    --max_train 51200 \
+    --max_save_num 5 \
+    --use-wb \
+    --wb-run-name spiral-qwen3-4b-base-8env-eval \
+    --wb-project spiral 
+
