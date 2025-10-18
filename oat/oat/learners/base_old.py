@@ -37,7 +37,7 @@ from oat.actors.base import ActorBase
 from oat.args import OATArgs
 from oat.collectors import AsyncFeedbackCollector, FeedbackCollector
 from oat.model import LLM
-from oat.types import PreferenceData, TransitionData
+from oat.types import PreferenceData, TrajectoryData
 from oat.utils.data import get_datasets, get_tokenizer
 from oat.utils.deepspeed import get_strategy
 from oat.utils.distributed import (
@@ -75,7 +75,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
     def _init(self, args: OATArgs, actors: List[ActorBase]) -> None:
         args, strategy = get_strategy(args)
         strategy.setup_distributed()
-        if args.resume_dir:
+        if args.resume_dir and not args.eval_only:
             save_path = args.resume_dir.replace("/checkpoints", "")
             self.save_path = save_path
             # the exp_name should delete the args.save_path from args.resume_dir
@@ -197,7 +197,8 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                 name=exp_name,
                 config=args.__dict__,
                 id=exp_name,
-                resume="must",
+                resume="allow",
+                # id="khjpv2qk"
             )
 
         self.algo = args.algo
@@ -332,6 +333,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
             self.strategy.load_ckpt(
                 self.model.model, self.args.resume_dir, self.args.resume_tag
             )
+            print(f"Resuming from {self.args.resume_dir}")
             # 2) Dataset ... (TODO)
 
         # Set initial steps based on resume_tag if available
@@ -354,12 +356,18 @@ class LearnerBase(abc.ABC, DistributedLauncher):
 
         self.actor_info = {}
 
-        if not self.strategy.args.debug:
+        if not self.strategy.args.debug or self.args.eval_only:
             self.eval_and_log({}, eval=True, save=False)
-
-        # Only reset steps to 1 if not resuming
-        if not (self.args.resume_dir and self.args.resume_tag is not None):
+        
+        if self.args.eval_only:
+            return
+        
+        # following original logic: if not to resume, then steps = 1
+        if self.args.resume_dir and self.args.resume_tag is not None:
+            pass
+        else:
             self.steps = 1
+            
         self.gradient_update_st = time.time()
         for p_ep in range(self.args.num_prompt_epoch):
             if isinstance(self.prompts_dataloader.sampler, DistributedSampler):
@@ -418,7 +426,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                     ) % self.args.buffer_clear_every == 0:
                         self.pi_buffer.clear()
 
-                    self.eval_and_log(train_info)
+                    self.eval_and_log(train_info, save=True)
 
                 progress_bar.update()
                 self.steps += 1
@@ -446,7 +454,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
 
     @abc.abstractmethod
     def process_feedback_data(
-        self, data_list: List[Union[PreferenceData, TransitionData]]
+        self, data_list: List[Union[PreferenceData, TrajectoryData]]
     ):
         """Process collected feedback data, e.g., adding it to buffer."""
 
@@ -522,7 +530,6 @@ class LearnerBase(abc.ABC, DistributedLauncher):
             return False
         if not hasattr(self, "_pending_eval"):
             self._pending_eval = False
-
         do_eval = self.steps % interval_steps == 0
         if not (do_eval or self._pending_eval):
             return False
@@ -539,8 +546,9 @@ class LearnerBase(abc.ABC, DistributedLauncher):
             return True
 
     def eval_and_log(self, train_info, eval=False, save=False):
+        #if save==False, then we don't save the model
         # save
-        if (self.args.save_steps > 0 and save) or (
+        if save and (
             self.steps > 0
             and self._should_do(self.args.save_steps)
             and self.steps >= self.args.save_from
@@ -561,7 +569,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                     max_num=self.args.max_save_num,
                     max_mem=self.args.max_save_mem,
                 )
-
+        
         # eval
         eval_info = {}
         if (self.args.eval_steps > 0 and eval) or self._should_do(self.args.eval_steps):
@@ -734,38 +742,10 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                 actor.futures.reset_prefix_cache() for actor in self.actors
             ]
 
-        if self.args.lora_rank > 0:
-            # For LoRA training, merge the model before broadcasting to actors.
-            # TODO: Only broadcasting the LoRA weights.
-            # Reference to https://github.com/shangshang-wang/Tina.
-            unwrapped_model = self.strategy._unwrap_model(self.model)
-            unwrapped_model.merge_adapter()
-            state_dict = unwrapped_model.state_dict()
-            # Remove base_model and base_layer prefixes
-            state_dict = {
-                k.removeprefix("base_model.model.").replace(".base_layer", ""): v
-                for k, v in state_dict.items()
-            }
-            # Remove values with adapter prefix (example: "_lora")
-            state_dict = {
-                k: v for k, v in state_dict.items() if unwrapped_model.prefix not in k
-            }
-            # When module to save, remove its prefix and discard the original module
-            state_dict = {
-                k.replace("modules_to_save.default.", ""): v
-                for k, v in state_dict.items()
-                if "original_module" not in k
-            }
-            state_dict_iterable = state_dict.items()
-            num_params = len(state_dict_iterable)
-        else:
-            model = self.model.model.module
-            state_dict_iterable = model.named_parameters()
-            num_params = len(list(model.named_parameters()))
-
+        model = self.model.model.module
+        count, num_params = 0, len(list(model.named_parameters()))
         torch.cuda.empty_cache()
-        count = 0
-        for name, param in state_dict_iterable:
+        for name, param in model.named_parameters():
             count += 1  # empty_cache at last param
 
             # Fire all vllm engines for broadcast
@@ -797,11 +777,6 @@ class LearnerBase(abc.ABC, DistributedLauncher):
             _ = [fut.result() for fut in reset_prefix_cache_futs]
         torch.cuda.empty_cache()
         dist.barrier()
-
-        if self.args.lora_rank > 0:
-            # Unmerge the adapter to restore the model to its original state.
-            unwrapped_model.unmerge_adapter()
-
         logging.info(f"weights @version={self.pi_beta_version} broadcasted to actors")
 
     def _post_learning(self):

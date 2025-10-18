@@ -76,6 +76,7 @@ python train_spiral.py \
     --use-wb \
     --wb-run-name spiral-qwen3-4b-base-8env-self-play \
     --wb-project spiral \
-    --debug \
-    --save-ckpt 
+    --save-ckpt \
+    --resume-dir ./oat-output/spiral-qwen3-4b-base-8env-self-play_1018T05:21:52/checkpoints \
+    --resume-tag step_00064
 

@@ -25,7 +25,21 @@ class OfflineLearner(LearnerBase):
     def run(self):
         self._init(self.args, self.actors)
 
-        self.steps = 0
+        # Set initial steps based on resume_tag if available
+        if self.args.resume_dir and self.args.resume_tag is not None:
+            # Extract step number from resume_tag (e.g., "step_00008" -> 8)
+            import re
+            match = re.search(r'step_(\d+)', self.args.resume_tag)
+            if match:
+                step_num = int(match.group(1))
+                self.steps = step_num
+                self.global_step = step_num
+                print(f"Resuming from step {self.steps}, global_step {self.global_step}")
+            else:
+                raise ValueError(f"Invalid resume_tag: {self.args.resume_tag}")
+        else:
+            self.steps = 0
+
         self.start_time = time.time()
 
         self.actor_info = {}
@@ -34,7 +48,9 @@ class OfflineLearner(LearnerBase):
         if not self.strategy.args.debug:
             self.eval_and_log({}, eval=True)
 
-        self.steps = 1
+        # Only reset steps to 1 if not resuming
+        if not (self.args.resume_dir and self.args.resume_tag is not None):
+            self.steps = 1
         self.gradient_update_st = time.time()
         for p_ep in range(self.args.num_prompt_epoch):
             progress_bar = tqdm(
