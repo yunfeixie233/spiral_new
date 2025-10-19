@@ -82,8 +82,6 @@ python train_spiral.py \
     --wb-run-name $SCRIPT_NAME \
     --wb-project spiral \
     --save-ckpt \
-    --resume-dir ./oat-output/spiral-qwen3-4b-base-8env-self-play_1018T05:21:52/checkpoints \
-    --resume-tag step_00064 \
     --debug \
     --skip_game_eval \
     --skip_dataset_eval
