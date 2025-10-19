@@ -31,6 +31,10 @@ export LP_LOG_LEVEL=DEBUG
 # Evaluation control:
 #   --skip_game_eval to skip game evaluation (speeds up training)
 #   --skip_dataset_eval to skip dataset evaluation (speeds up training)
+
+# Get script name without path and extension for wb-run-name
+SCRIPT_NAME=$(basename "$0" .sh)
+
 pkill -u ubuntu python
 python train_spiral.py \
     --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 Briscola-v1 ColonelBlotto-v1 IndianPoker-v1 TwoDollar-v1 \
@@ -75,10 +79,12 @@ python train_spiral.py \
     --max_train 51200 \
     --max_save_num 5 \
     --use-wb \
-    --wb-run-name spiral-qwen3-4b-base-8env-self-play \
+    --wb-run-name $SCRIPT_NAME \
     --wb-project spiral \
     --save-ckpt \
     --resume-dir ./oat-output/spiral-qwen3-4b-base-8env-self-play_1018T05:21:52/checkpoints \
     --resume-tag step_00064 \
-    --debug
+    --debug \
+    --skip_game_eval \
+    --skip_dataset_eval
 

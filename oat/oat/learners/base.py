@@ -196,9 +196,9 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                 group=args.wb_group,
                 name=exp_name,
                 config=args.__dict__,
-                # id=exp_name,
-                resume="must",
-                id="z2f2j5tg"
+                id=exp_name,
+                resume="allow",
+                # id="z2f2j5tg"
             )
 
         self.algo = args.algo

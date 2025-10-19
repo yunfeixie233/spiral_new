@@ -22,6 +22,7 @@ echo "NCCL_TIMEOUT is set to: $NCCL_TIMEOUT milliseconds"
 
 export LP_DEBUG=1
 export LP_LOG_LEVEL=DEBUG
+SCRIPT_NAME=$(basename "$0" .sh)
 
 # Notes ==========
 # Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
@@ -70,8 +71,11 @@ python train_spiral.py \
     --max_train 51200 \
     --max_save_num 5 \
     --use-wb \
-    --wb-run-name spiral-qwen3-4b-base-4env-self-play \
+    --wb-run-name $SCRIPT_NAME \
     --wb-project spiral \
     --save-ckpt \
     --resume-dir ./oat-output/spiral-qwen3-4b-base-4env-self-play_1018T0537/checkpoints \
-    --resume-tag step_00064
+    --resume-tag step_00064 \
+    --debug \
+    --skip_game_eval \
+    --skip_dataset_eval
