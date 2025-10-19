@@ -197,8 +197,8 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                 name=exp_name,
                 config=args.__dict__,
                 # id=exp_name,
-                id="in75z78c",
                 resume="must",
+                id="z2f2j5tg"
             )
 
         self.algo = args.algo
@@ -337,15 +337,16 @@ class LearnerBase(abc.ABC, DistributedLauncher):
 
         # Set initial steps based on resume_tag if available
         if self.args.resume_dir and self.args.resume_tag is not None:
-            # Extract step number from resume_tag (e.g., "step_00008" -> 8)
+            # Extract step number from resume_tag (e.g., "step_00064" -> 64)
             import re
             match = re.search(r'step_(\d+)', self.args.resume_tag)
             if match:
                 step_num = int(match.group(1))
-                self.steps = step_num
+                # Resume from the NEXT step after the checkpoint (checkpoint at step 64 means continue from 65)
+                self.steps = step_num + 1
                 # Also set global_step to match the resumed step count
                 self.global_step = step_num
-                print(f"Resuming from step {self.steps}, global_step {self.global_step}")
+                print(f"Resuming from checkpoint step {step_num}, continuing from step {self.steps}, global_step {self.global_step}")
             else:
                 raise ValueError(f"Invalid resume_tag: {self.args.resume_tag}")
         else:

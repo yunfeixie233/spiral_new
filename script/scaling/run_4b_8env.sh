@@ -37,6 +37,7 @@ python train_spiral.py \
     --use_llm_obs_wrappers True True False False True True True True \
     --eval_env_ids TicTacToe-v1 KuhnPoker-v1 Briscola-v1 ColonelBlotto-v1 \
     --eval_use_llm_obs_wrappers False True True True \
+    --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
     --gamma 1 \
     --gpus 8 \
@@ -78,5 +79,6 @@ python train_spiral.py \
     --wb-project spiral \
     --save-ckpt \
     --resume-dir ./oat-output/spiral-qwen3-4b-base-8env-self-play_1018T05:21:52/checkpoints \
-    --resume-tag step_00064
+    --resume-tag step_00064 \
+    --debug
 
