@@ -196,7 +196,8 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                 group=args.wb_group,
                 name=exp_name,
                 config=args.__dict__,
-                id=exp_name,
+                # id=exp_name,
+                id="in75z78c",
                 resume="must",
             )
 
@@ -418,7 +419,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                     ) % self.args.buffer_clear_every == 0:
                         self.pi_buffer.clear()
 
-                    self.eval_and_log(train_info)
+                    self.eval_and_log(train_info, save=True)
 
                 progress_bar.update()
                 self.steps += 1
@@ -540,7 +541,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
 
     def eval_and_log(self, train_info, eval=False, save=False):
         # save
-        if (self.args.save_steps > 0 and save) or (
+        if save and (
             self.steps > 0
             and self._should_do(self.args.save_steps)
             and self.steps >= self.args.save_from

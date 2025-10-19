@@ -32,6 +32,7 @@ python train_spiral.py \
     --use_llm_obs_wrappers True True False False \
     --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1\
     --eval_use_llm_obs_wrappers  True True False False  \
+    --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
     --gamma 1 \
     --gpus 8 \
