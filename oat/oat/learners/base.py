@@ -358,6 +358,14 @@ class LearnerBase(abc.ABC, DistributedLauncher):
 
         if not self.strategy.args.debug:
             self.eval_and_log({}, eval=True, save=False)
+            
+            # If eval_only mode, exit after evaluation
+            if self.strategy.args.eval_only:
+                self.strategy.print("Evaluation complete. Exiting (eval_only mode).")
+                if self.strategy.is_rank_0():
+                    self._wandb.finish() if self._wandb else None
+                    lp.stop()
+                return
 
         # Only reset steps to 1 if not resuming
         if not (self.args.resume_dir and self.args.resume_tag is not None):
