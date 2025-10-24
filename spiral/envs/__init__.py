@@ -93,21 +93,22 @@ register(
 
 
 def make_env(env_id: str, use_llm_obs_wrapper: bool):
-    env = ta.make(env_id)
+    # Use -raw variant to avoid double-wrapping with TextArena's default wrappers
+    raw_env_id = f"{env_id}-raw"
+    from textarena.envs.registration import ENV_REGISTRY
     
-    # List of environments that append available actions on each get_observation()
-    # These need the FirstLastObservationWrapper to avoid accumulation
-    envs_with_action_messages = ["KuhnPoker-v1"]
+    if raw_env_id in ENV_REGISTRY:
+        # logging.info(f"[make_env] Using raw variant: {raw_env_id}")
+        env = ta.make(raw_env_id)
+    else:
+        # logging.info(f"[make_env] No raw variant for {env_id}, using default")
+        env = ta.make(env_id)
     
     if use_llm_obs_wrapper:
-        if env_id in envs_with_action_messages:
-            logging.info(f"[ENV] Using FirstLastObservationWrapper for {env_id}")
-            env = ta.wrappers.FirstLastObservationWrapper(env=env)
-        else:
-            logging.info(f"[ENV] Using LLMObservationWrapper for {env_id}")
-            env = ta.wrappers.LLMObservationWrapper(env=env)
+        # logging.info(f"[ENV] Using LLMObservationWrapper for {env_id}")
+        env = ta.wrappers.LLMObservationWrapper(env=env)
     else:
-        logging.info(f"[ENV] Using FirstLastObservationWrapper for {env_id}")
+        # logging.info(f"[ENV] Using FirstLastObservationWrapper for {env_id}")
         env = ta.wrappers.FirstLastObservationWrapper(env=env)
     return env
 

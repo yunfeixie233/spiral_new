@@ -82,7 +82,7 @@ python train_spiral.py \
     --wb-run-name $SCRIPT_NAME \
     --wb-project spiral \
     --save-ckpt \
+    --debug \
     --skip_game_eval \
-    --resume-dir ./oat-output/run_4b_8env_1019T0320/checkpoints \
-    --resume-tag step_00192
+    --skip_dataset_eval
 

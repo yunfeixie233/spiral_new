@@ -171,7 +171,20 @@ class SelfPlayActor(PPOActor):
             logprobs=True,
         )
 
-        self.step_count = 0
+        # Initialize step_count based on resume_tag if resuming from checkpoint
+        if args.resume_dir and args.resume_tag:
+            import re
+            match = re.search(r'step_(\d+)', args.resume_tag)
+            if match:
+                step_num = int(match.group(1))
+                # Resume from the NEXT step after the checkpoint
+                self.step_count = step_num + 1
+                logging.info(f"Actor {actor_id} resuming from step {self.step_count}")
+            else:
+                self.step_count = 0
+        else:
+            self.step_count = 0
+        
         self.online_model_player = actor_id % 2
         if self.args.fixed_opponent not in ["", "random"]:
             self.open_router_opponent = ta.agents.OpenRouterAgent(
@@ -556,7 +569,7 @@ class SelfPlayActor(PPOActor):
         player_ids_for_training = [0, 1]
         if self.args.fixed_opponent:
             player_ids_for_training = [self.online_model_player]
-        logging.info(f"player_ids_for_training: {player_ids_for_training}")
+        # logging.info(f"player_ids_for_training: {player_ids_for_training}")
 
         for player_id in player_ids_for_training:
             player_trajectories = game_state.get_player_trajectories(player_id)

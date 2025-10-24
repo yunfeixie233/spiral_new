@@ -24,8 +24,6 @@ export LP_DEBUG=1
 export LP_LOG_LEVEL=DEBUG
 
 # Notes ==========
-# Training on 8 environments: 4 original + 4 new
-# New environments: Briscola, ColonelBlotto, IndianPoker, TwoDollar
 # Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
 # Set `--eval_opponent_names google/gemini-2.0-flash-lite-001` if you have OpenRouter access.
 # Evaluation control:
@@ -37,10 +35,10 @@ SCRIPT_NAME=$(basename "$0" .sh)
 
 pkill -u ubuntu python
 python train_spiral.py \
-    --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 Briscola-v1 ColonelBlotto-v1 IndianPoker-v1 TwoDollar-v1 \
-    --use_llm_obs_wrappers True True False False True True True True \
-    --eval_env_ids TicTacToe-v1 KuhnPoker-v1 Briscola-v1 ColonelBlotto-v1 \
-    --eval_use_llm_obs_wrappers False True True True \
+    --env_ids KuhnPoker-v1 \
+    --use_llm_obs_wrappers True \
+    --eval_env_ids TicTacToe-v0 KuhnPoker-v1 \
+    --eval_use_llm_obs_wrappers False True \
     --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
     --gamma 1 \
@@ -71,8 +69,8 @@ python train_spiral.py \
     --temperature 1.0 \
     --top_p 1 \
     --eval_steps 32 \
-    --save_steps 32 \
-    --eval_games 8 \
+    --save_steps 16 \
+    --eval_games 16 \
     --eval_temperature 0.6 \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \
@@ -81,8 +79,4 @@ python train_spiral.py \
     --use-wb \
     --wb-run-name $SCRIPT_NAME \
     --wb-project spiral \
-    --save-ckpt \
-    --skip_game_eval \
-    --resume-dir ./oat-output/run_4b_8env_1019T0320/checkpoints \
-    --resume-tag step_00192
-
+    --save-ckpt 

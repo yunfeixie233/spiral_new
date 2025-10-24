@@ -1,3 +1,4 @@
+import logging
 import random
 from abc import ABC, abstractmethod
 from enum import Enum, auto
@@ -178,6 +179,7 @@ class Wrapper(Env):
 class ObservationWrapper(Wrapper):
     def get_observation(self):
         player_id, observation = self.env.get_observation()
+        # logging.info(f"[ObservationWrapper.get_observation] wrapper={type(self).__name__}, env={type(self.env).__name__}, player_id={player_id}, obs type={type(observation)}")
         return player_id, self.observation(player_id, observation)
     
     def observation(self):

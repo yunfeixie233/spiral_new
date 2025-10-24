@@ -1,3 +1,4 @@
+import logging
 import textarena as ta 
 from textarena.core import ObservationWrapper, Env, Observations, Info, ObservationType
 from typing import Dict, Optional, Tuple, List
@@ -75,8 +76,15 @@ class FirstLastObservationWrapper(ObservationWrapper):
     def __init__(self, env: Env):
         super().__init__(env)
         self.full_observations: Dict[int, List[Tuple[int, str]]] = {}
+        # logging.info(f"[FirstLastObservationWrapper] Wrapped env type: {type(env).__name__}")
 
     def _convert_obs_to_str(self, player_id: int) -> Observations:
+        # logging.info(f"[FirstLastObservationWrapper._convert_obs_to_str] player_id={player_id}, full_obs keys={list(self.full_observations.keys())}")
+        # if player_id in self.full_observations:
+        #     logging.info(f"[FirstLastObservationWrapper._convert_obs_to_str] full_obs[{player_id}] length={len(self.full_observations[player_id])}, type={type(self.full_observations[player_id])}")
+        #     if len(self.full_observations[player_id]) > 0:
+        #         logging.info(f"[FirstLastObservationWrapper._convert_obs_to_str] first element type={type(self.full_observations[player_id][0])}, value={self.full_observations[player_id][0][:100] if isinstance(self.full_observations[player_id][0], str) else self.full_observations[player_id][0]}")
+        
         return_str = self.full_observations[player_id][0][1]
         if len(self.full_observations[player_id]) > 1:
             return_str += "\n\n" + self.full_observations[player_id][-1][1]
@@ -84,9 +92,13 @@ class FirstLastObservationWrapper(ObservationWrapper):
         return return_str + "\n\n" + "Next Action:"
 
     def observation(self, player_id: int, observation: Optional[ta.Observations]):
+        # logging.info(f"[FirstLastObservationWrapper.observation] player_id={player_id}, obs is None={observation is None}, obs type={type(observation)}")
+        
         if observation is None:
             return self._convert_obs_to_str(player_id=player_id)
 
+        # logging.info(f"[FirstLastObservationWrapper.observation] obs value type={type(observation)}, obs={observation[:200] if isinstance(observation, str) else observation}")
+        
         # Extend the full observations with the current observations without duplicates
         if player_id not in self.full_observations:
             self.full_observations[player_id] = []

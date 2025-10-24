@@ -238,13 +238,26 @@ class DeepspeedStrategy(ABC):
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-    def setup_distributed(self, timeout=timedelta(minutes=60)) -> None:
+    def setup_distributed(self, timeout=None) -> None:
         self.set_seed(self.seed)
         if self.args.local_rank == -1 and "LOCAL_RANK" in os.environ:  # for slurm
             self.args.local_rank = int(os.environ["LOCAL_RANK"])
 
         if self.args.local_rank != -1:
             torch.cuda.set_device(self.args.local_rank)
+        
+        # Check for NCCL_TIMEOUT environment variable
+        if timeout is None:
+            nccl_timeout_ms = os.environ.get('NCCL_TIMEOUT', None)
+            if nccl_timeout_ms is not None:
+                timeout_seconds = int(nccl_timeout_ms) / 1000.0
+                timeout = timedelta(seconds=timeout_seconds)
+                logging.info(f"[DeepSpeed NCCL Config] Using NCCL_TIMEOUT from environment: {nccl_timeout_ms}ms = {timeout}")
+            else:
+                timeout = timedelta(minutes=60)
+                logging.info(f"[DeepSpeed NCCL Config] Using default timeout: {timeout}")
+        
+        logging.info(f"[DeepSpeed NCCL Config] Initializing distributed with timeout: {timeout}")
         # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
         deepspeed.init_distributed(timeout=timeout)
         self.world_size = dist.get_world_size()
