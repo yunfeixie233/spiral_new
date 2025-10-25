@@ -75,7 +75,8 @@ python train_spiral_eval.py \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \
     --max_train 51200 \
-    --max_save_num 5 \
+    --max_ckpt_save_num 2 \
+    --max_weight_save_num 200 \
     --use-wb \
     --wb-run-name $SCRIPT_NAME \
     --wb-project spiral \

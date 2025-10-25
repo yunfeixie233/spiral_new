@@ -560,7 +560,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                 self.tokenizer,
                 os.path.join(self.save_path, "saved_models"),
                 tag="step_{:05d}".format(self.steps),
-                max_num=self.args.max_save_num,
+                max_num=self.args.max_weight_save_num,
                 max_mem=self.args.max_save_mem,
             )
             if self.args.save_ckpt:
@@ -568,7 +568,7 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                     self.model.model,
                     os.path.join(self.save_path, "checkpoints"),
                     tag="step_{:05d}".format(self.steps),
-                    max_num=self.args.max_save_num,
+                    max_num=self.args.max_ckpt_save_num,
                     max_mem=self.args.max_save_mem,
                 )
 

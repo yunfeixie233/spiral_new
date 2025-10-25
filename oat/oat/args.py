@@ -193,7 +193,8 @@ class OATArgs:
     save_ckpt: bool = False
     resume_dir: str = ""
     resume_tag: str = None
-    max_save_num: int = 5
+    max_ckpt_save_num: int = 5
+    max_weight_save_num: int = 5
     max_save_mem: int = 1000
     logging_steps: int = 1
     num_prompt_epoch: int = 1

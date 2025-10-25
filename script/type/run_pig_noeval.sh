@@ -35,10 +35,10 @@ SCRIPT_NAME=$(basename "$0" .sh)
 
 pkill -u ubuntu python
 python train_spiral.py \
-    --env_ids KuhnPoker-v1 \
-    --use_llm_obs_wrappers True \
-    --eval_env_ids TicTacToe-v0 KuhnPoker-v1 \
-    --eval_use_llm_obs_wrappers False True \
+    --env_ids PigDice-v1 \
+    --use_llm_obs_wrappers False \
+    --eval_env_ids TicTacToe-v0 KuhnPoker-v1 SimpleNegotiation-v1 PigDice-v1 \
+    --eval_use_llm_obs_wrappers False True True False \
     --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
     --gamma 1 \
@@ -80,4 +80,7 @@ python train_spiral.py \
     --use-wb \
     --wb-run-name $SCRIPT_NAME \
     --wb-project spiral \
-    --save-ckpt 
+    --save-ckpt \
+    --debug \
+    --skip_game_eval \
+    --skip_dataset_eval
