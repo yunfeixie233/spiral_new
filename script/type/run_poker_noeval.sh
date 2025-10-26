@@ -35,7 +35,7 @@ SCRIPT_NAME=$(basename "$0" .sh)
 
 pkill -u ubuntu python
 python train_spiral.py \
-    --env_ids SimpleNegotiation-v1 \
+    --env_ids KuhnPoker-v1 \
     --use_llm_obs_wrappers True \
     --eval_env_ids TicTacToe-v0 KuhnPoker-v1 SimpleNegotiation-v1 PigDice-v1 \
     --eval_use_llm_obs_wrappers False True True False \
@@ -74,7 +74,7 @@ python train_spiral.py \
     --eval_temperature 0.6 \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \
-    --max_train 25600 \
+    --max_train 51200 \
     --max_ckpt_save_num 2 \
     --max_weight_save_num 200 \
     --use-wb \

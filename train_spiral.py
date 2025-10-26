@@ -514,11 +514,10 @@ class SelfPlayActor(PPOActor):
                 ]
 
             # Chat-based extraction for environments with infinite/unbounded action spaces
-            # - SimpleNegotiation-v1: unbounded offer amounts
             # - IndianPoker-v1: betting amounts 1 to chip_count
             # - TwoDollar-v1: proposal amounts $0.00 to $2.00
             # All other environments use finite action space parsing
-            if env_id in ["DontSayIt-v0", "SimpleNegotiation-v1", "IndianPoker-v1", "TwoDollar-v1"]:
+            if env_id in ["DontSayIt-v0", "IndianPoker-v1", "TwoDollar-v1"]:
                 clean_action = self.extract_chat_action(raw_action)
             else:
                 action_space = get_valid_action_parser(env_id)(observation)

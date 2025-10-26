@@ -17,16 +17,14 @@ import re
 
 
 def kuhn_poker_parse_available_actions(observation: str):
-    # Find line containing "available action"
-    for line in observation.split('\n'):
-        if 'available action' in line.lower():
-            available_actions = re.findall(r"\[(.*?)\]", line)
-            # Add brackets
-            available_actions = [f"[{action}]" for action in available_actions]
-            # Remove [GAME]
-            available_actions = [action for action in available_actions if action != "[GAME]"]
-            return available_actions
-    return []
+    # Parse the last line which contains the current available actions
+    last_line = observation.strip().split("\n")[-1]
+    available_actions = re.findall(r"\[(.*?)\]", last_line)
+    # Add brackets
+    available_actions = [f"[{action}]" for action in available_actions]
+    # Remove [GAME]
+    available_actions = [action for action in available_actions if action != "[GAME]"]
+    return available_actions
 
 
 def tic_tac_toe_parse_available_moves(observation: str):
