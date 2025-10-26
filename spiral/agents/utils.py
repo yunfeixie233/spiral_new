@@ -48,17 +48,17 @@ def pig_dice_parse_available_actions(observation: str):
     
     The game sends messages like: "Available actions: '[roll]' or '[hold]'"
     PigDice always has the same two actions available: roll and hold.
-    The environment accepts both full forms and shorthand forms.
+    The environment only accepts the full forms via regex: r"\[(roll|hold)\]"
     
     Args:
         observation: The current game observation
         
     Returns:
-        List of valid action strings including both full and shorthand forms
+        List of valid action strings that the environment accepts
     """
     # PigDice always has the same action space throughout the game
-    # Return all valid variations that the environment accepts
-    return ["[roll]", "[r]", "[hold]", "[h]"]
+    # Return only the actions that match the environment's regex pattern
+    return ["[roll]", "[hold]"]
 
 def simple_negotiation_parse_available_actions(observation: str):
     valid_actions = []
