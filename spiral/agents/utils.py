@@ -221,6 +221,38 @@ def indian_poker_parse_available_actions(observation: str):
     return valid_actions
 
 
+def simple_tak_parse_available_actions(observation: str):
+    """
+    Parse available actions for SimpleTak game.
+    
+    SimpleTak is a connection game where players place stones on an NxN board.
+    Actions are cell placements in format [N] where N is the cell index.
+    
+    The observation includes a line like:
+    "Available Moves: [0], [1], [2], [5], ..."
+    
+    Args:
+        observation: The current game observation
+        
+    Returns:
+        List of valid action strings in format "[N]"
+    """
+    available_moves = []
+    
+    # Find the "Available Moves:" section
+    moves_pattern = r"Available Moves:\s*(.+?)(?:\n|$)"
+    moves_match = re.search(moves_pattern, observation)
+    
+    if moves_match:
+        moves_section = moves_match.group(1)
+        # Extract all moves in format [N]
+        pattern = r"\[(\d+)\]"
+        moves = re.findall(pattern, moves_section)
+        available_moves = [f"[{move}]" for move in moves]
+    
+    return available_moves
+
+
 _VALID_ACTION_PARSER = {
     "TicTacToe-v0": tic_tac_toe_parse_available_moves,
     "KuhnPoker-v1": kuhn_poker_parse_available_actions,
@@ -230,6 +262,7 @@ _VALID_ACTION_PARSER = {
     "Briscola-v1": briscola_parse_available_actions,
     "ColonelBlotto-v1": colonel_blotto_parse_available_actions,
     "IndianPoker-v1": indian_poker_parse_available_actions,
+    "SimpleTak-v0": simple_tak_parse_available_actions,
 }
 
 
