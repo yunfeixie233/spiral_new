@@ -15,28 +15,39 @@
 # Common =========
 export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"):$LD_LIBRARY_PATH
 export NCCL_CUMEM_ENABLE=0
-export NCCL_TIMEOUT=3600000
+export NCCL_TIMEOUT=7200000
 
 # Verify NCCL timeout is set
 echo "NCCL_TIMEOUT is set to: $NCCL_TIMEOUT milliseconds"
 
 export LP_DEBUG=1
 export LP_LOG_LEVEL=DEBUG
-SCRIPT_NAME=$(basename "$0" .sh)
 
 # Notes ==========
 # Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
 # Set `--eval_opponent_names google/gemini-2.0-flash-lite-001` if you have OpenRouter access.
+# Evaluation control:
+#   --skip_game_eval to skip game evaluation (speeds up training)
+#   --skip_dataset_eval to skip dataset evaluation (speeds up training)
+#
+# GPU optimization for eval-only mode:
+#   Only rank 0 performs evaluation work, so --gpus 1 is sufficient for --eval_only
+#   This avoids wasting 7 GPUs waiting at barriers during evaluation
+#   To use a specific GPU (e.g., GPU 3), set: export CUDA_VISIBLE_DEVICES=3
+
+# Get script name without path and extension for wb-run-name
+SCRIPT_NAME=$(basename "$0" .sh)
+
 pkill -u ubuntu python
 python train_spiral_eval.py \
-    --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 \
-    --use_llm_obs_wrappers True True False False \
-    --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1\
-    --eval_use_llm_obs_wrappers  True True False False  \
+    --env_ids PigDice-v1 \
+    --use_llm_obs_wrappers False \
+    --eval_env_ids TicTacToe-v0 KuhnPoker-v1 SimpleNegotiation-v1 PigDice-v1 \
+    --eval_use_llm_obs_wrappers False True True False \
     --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
     --gamma 1 \
-    --gpus 8 \
+    --gpus 1 \
     --gradient-checkpointing \
     --num_samples 1 \
     --rollout_batch_size 128 \
@@ -44,7 +55,7 @@ python train_spiral_eval.py \
     --num_envs 1 \
     --rollout_batch_size_per_device 16 \
     --pi_buffer_maxlen_per_device 16 \
-    --pretrain ./checkpoint/Qwen3-4B-Base \
+    --pretrain /ephemeral/games-workspace/spiral/oat-output/run_pig_noeval_1025T1515/saved_models/step_00272 \
     --enable_prefix_caching \
     --collocate \
     --vllm_sleep \
@@ -68,13 +79,12 @@ python train_spiral_eval.py \
     --eval_temperature 0.6 \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \
-    --max_train 25600 \
+    --max_train 51200 \
     --max_ckpt_save_num 2 \
     --max_weight_save_num 200 \
     --use-wb \
     --wb-run-name $SCRIPT_NAME \
     --wb-project spiral \
     --save-ckpt \
-    --debug \
-    --skip_game_eval \
-    --skip_dataset_eval
+    --eval_only \
+    --skip_game_eval 

@@ -80,6 +80,30 @@ class LearnerBase(abc.ABC, DistributedLauncher):
             self.save_path = save_path
             # the exp_name should delete the args.save_path from args.resume_dir
             exp_name = os.path.basename(os.path.normpath(save_path))
+        elif args.eval_only and "step" in args.pretrain:
+            # For eval_only mode, extract exp_name from pretrain path
+            # e.g., /ephemeral/.../oat-output/run_pig_noeval_1025T1515/saved_models/step_00272
+            # Extract: run_pig_noeval_1025T1515
+            import re
+            pretrain_path = args.pretrain
+            
+            # Assert that saved_models is in the path
+            assert "saved_models" in pretrain_path, \
+                f"eval_only mode requires pretrain path to contain 'saved_models', got: {pretrain_path}"
+            
+            # Get parent directory of saved_models
+            parent_dir = os.path.dirname(os.path.dirname(pretrain_path))
+            exp_name = os.path.basename(parent_dir) + "_eval"
+            self.save_path = parent_dir
+            
+            # Extract step number from pretrain path for eval_only mode
+            step_match = re.search(r'step_(\d+)', pretrain_path)
+            assert step_match, \
+                f"eval_only mode requires pretrain path to contain 'step_XXXXX', got: {pretrain_path}"
+            
+            self.eval_only_step = int(step_match.group(1))
+            strategy.print(f"Eval-only mode: Using step {self.eval_only_step} from pretrain path")
+            strategy.print(f"Eval-only mode: Using exp_name '{exp_name}' from pretrain path")
         else:
         # Prepare workspace.
             exp_name = args.wb_run_name + "_" + datetime.now().strftime("%m%dT%H%M")
@@ -190,6 +214,12 @@ class LearnerBase(abc.ABC, DistributedLauncher):
             self._wandb = wandb
             if not wandb.api.api_key:
                 wandb.login(key=strategy.args.use_wb)
+            
+            # Log exp_name for debugging
+            strategy.print(f"Initializing wandb with exp_name: {exp_name}")
+            if args.eval_only and hasattr(self, 'eval_only_step'):
+                strategy.print(f"Eval-only mode: Will use step {self.eval_only_step} for logging")
+            
             wandb.init(
                 entity=args.wb_org,
                 project=args.wb_project,
@@ -357,6 +387,10 @@ class LearnerBase(abc.ABC, DistributedLauncher):
         self.actor_info = {}
 
         if not self.strategy.args.debug:
+            # For eval_only mode, use the step from pretrain path
+            if self.strategy.args.eval_only and hasattr(self, 'eval_only_step'):
+                self.steps = self.eval_only_step
+            
             self.eval_and_log({}, eval=True, save=False)
             
             # If eval_only mode, exit after evaluation
@@ -606,7 +640,8 @@ class LearnerBase(abc.ABC, DistributedLauncher):
                     self.strategy.print(np.random.choice(self.pi_buffer))
                 self.strategy.pprint(logs_dict)
                 if self._wandb is not None:
-                    self._wandb.log(logs_dict)
+                    # Include step in wandb logging
+                    self._wandb.log(logs_dict, step=self.steps)
 
     def _pre_evaluate(self):
         # Let Actors cache the current behavior policy.

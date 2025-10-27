@@ -33,8 +33,28 @@ def get_program(
     actor_cls: Type[ActorBase] = PreferenceActor,
 ):
     """Define the default distributed program topology with configs."""
+    import os
+    
     program = lp.Program("oat")
-    gpu_offset = (args.group_rank * args.gpus) % torch.cuda.device_count()
+    
+    # Check if CUDA_VISIBLE_DEVICES is set to use specific GPUs
+    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    if cuda_visible_devices is not None and cuda_visible_devices.strip():
+        # Parse the specified GPUs
+        specified_gpus = [int(x.strip()) for x in cuda_visible_devices.split(",") if x.strip()]
+        if specified_gpus:
+            # Use the first GPU as the base offset
+            # This respects the user's GPU selection from CUDA_VISIBLE_DEVICES
+            gpu_offset = specified_gpus[0]
+            logging.warning(
+                f"CUDA_VISIBLE_DEVICES={cuda_visible_devices} detected. "
+                f"Using GPU offset {gpu_offset} (starting from GPU {specified_gpus[0]})"
+            )
+        else:
+            gpu_offset = (args.group_rank * args.gpus) % torch.cuda.device_count()
+    else:
+        gpu_offset = (args.group_rank * args.gpus) % torch.cuda.device_count()
+    
     # Resource.
     if args.collocate:
         actor_gpus = learner_gpus = list(range(args.gpus))
