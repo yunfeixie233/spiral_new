@@ -18,8 +18,8 @@ cd /ephemeral/games-workspace/spiral
 python train_spiral_eval.py \
     --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 \
     --use_llm_obs_wrappers True True False False \
-    --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 \
-    --eval_use_llm_obs_wrappers True True False False \
+    --eval_env_ids SimpleTak-v0 IndianPoker-v1 \
+    --eval_use_llm_obs_wrappers False True \
     --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
     --gamma 1 \
@@ -63,6 +63,6 @@ python train_spiral_eval.py \
     --wb-project spiral \
     --save-ckpt \
     --eval_only \
-    --skip_game_eval
+    --skip_dataset_eval
 
 

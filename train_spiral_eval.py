@@ -29,8 +29,10 @@ from typing import Dict, List, Literal, Optional, Tuple
 
 from dotenv import load_dotenv
 import numpy as np
+import pandas as pd
 import textarena as ta
 import torch.distributed as dist
+import tree
 import vllm
 from oat.actors.base import ActorBase
 from oat.algorithms.ppo import PPOActor, PPOArgs, PPOLearner
@@ -39,7 +41,7 @@ from oat.interface import get_program, lp
 from oat.types import TransitionData
 from oat.utils.data import load_data_from_disk_or_hf
 from oat.utils.ops import masked_mean, masked_sum
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 load_dotenv()
@@ -859,6 +861,166 @@ class SelfPlayLearner(PPOLearner):
             if args.critic_type == "drgrpo"
             else masked_mean
         )
+        
+        # Track initial step for resume
+        self.initial_step = 0
+    
+    def run(self):
+        """Override run to properly handle step counting when resuming."""
+        # Call parent's _init
+        self._init(self.args, self.actors)
+
+        if self.args.resume_dir:
+            # Resume from previous training.
+            # 1) Model & training states
+            self.strategy.load_ckpt(
+                self.model.model, self.args.resume_dir, self.args.resume_tag
+            )
+
+        # Set initial steps based on resume_tag if available
+        if self.args.resume_dir and self.args.resume_tag is not None:
+            # Extract step number from resume_tag (e.g., "step_00192" -> 192)
+            import re
+            match = re.search(r'step_(\d+)', self.args.resume_tag)
+            if match:
+                step_num = int(match.group(1))
+                # Resume from the NEXT step after the checkpoint
+                self.steps = step_num + 1
+                self.global_step = step_num
+                self.initial_step = step_num + 1
+                self.strategy.print(f"Resuming from checkpoint step {step_num}, continuing from step {self.steps}, global_step {self.global_step}")
+            else:
+                raise ValueError(f"Invalid resume_tag: {self.args.resume_tag}")
+        else:
+            self.steps = 0
+            self.initial_step = 0
+        
+        early_stop = False
+        self.start_time = time.time()
+
+        self.actor_info = {}
+
+        if not self.strategy.args.debug:
+            # For eval_only mode, use the step from pretrain path
+            if self.strategy.args.eval_only and hasattr(self, 'eval_only_step'):
+                self.steps = self.eval_only_step
+            
+            self.eval_and_log({}, eval=True, save=False)
+            
+            # If eval_only mode, exit after evaluation
+            if self.strategy.args.eval_only:
+                self.strategy.print("Evaluation complete. Exiting (eval_only mode).")
+                if self.strategy.is_rank_0():
+                    self._wandb.finish() if self._wandb else None
+                    lp.stop()
+                return
+
+        # Only reset steps to 1 if not resuming
+        if not (self.args.resume_dir and self.args.resume_tag is not None):
+            self.steps = 1
+        self.gradient_update_st = time.time()
+        
+        # Calculate how many steps to skip based on resume
+        steps_completed = self.initial_step - 1 if self.initial_step > 0 else 0
+        
+        for p_ep in range(self.args.num_prompt_epoch):
+            if isinstance(self.prompts_dataloader.sampler, DistributedSampler):
+                self.prompts_dataloader.sampler.set_epoch(p_ep)
+                self.strategy.print(f"Set DistributedSampler at epoch {p_ep}")
+            
+            # Create progress bar with proper initial value
+            total_steps = self.prompts_dataloader.__len__()
+            progress_bar = tqdm(
+                range(total_steps),
+                desc=f"Prompt epoch [{p_ep + 1}/{self.args.num_prompt_epoch}]",
+                disable=not self.strategy.is_rank_0(),
+                initial=min(steps_completed, total_steps),
+                total=total_steps,
+            )
+
+            step_in_epoch = 0
+            for processed_prompts, raw_prompts, refs in self.prompts_dataloader:
+                # Skip already completed steps when resuming
+                if self.steps <= steps_completed:
+                    self.steps += 1
+                    step_in_epoch += 1
+                    progress_bar.update()
+                    continue
+                    
+                if early_stop:
+                    break
+                # Call actor.step remotely to generate rollout & collect feedback.
+                feedback_data, self.actor_info = self.collector.collect_feedback(
+                    raw_prompts, processed_prompts, refs, self._same_actor_group
+                )
+                dist.barrier()
+
+                if feedback_data is None:
+                    # Asynchronous prefilling, data is stored in collector's buffer.
+                    continue
+                self.prompt_consumed += len(feedback_data)
+
+                self.process_feedback_data(feedback_data)
+
+                if (
+                    self.args.dump_replay_every > 0
+                    and self.steps % self.args.dump_replay_every == 0
+                ):
+                    if not self.strategy.is_rank_0():
+                        dist.gather_object(self.pi_buffer)
+                    else:
+                        gather_all_buffer = [None] * self.strategy.world_size
+                        dist.gather_object(self.pi_buffer, gather_all_buffer)
+                        import pandas as pd
+                        pd.to_pickle(
+                            (processed_prompts, refs, gather_all_buffer),
+                            os.path.join(
+                                self.save_path, f"buffer_step{self.steps:05}.pkl"
+                            ),
+                        )
+
+                if self.steps % self.update_interval == 0:
+                    self._pre_learning()
+                    train_info = self.learn(self.steps // self.update_interval)
+                    self._post_learning()
+
+                    if (
+                        self.steps // self.update_interval
+                    ) % self.args.sync_params_every == 0:
+                        self.sync_params_to_actors()
+
+                    if (
+                        self.steps // self.update_interval
+                    ) % self.args.buffer_clear_every == 0:
+                        self.pi_buffer.clear()
+
+                    self.eval_and_log(train_info, save=True)
+
+                progress_bar.update()
+                self.steps += 1
+                step_in_epoch += 1
+
+                if self.get_current_query() > self.args.max_queries:
+                    early_stop = True
+
+            self.prompt_epoch = p_ep + 1
+
+        self.eval_and_log(train_info, eval=True, save=True)
+
+        if self.args.dump_all_buffer:
+            if not self.strategy.is_rank_0():
+                dist.gather_object(self.all_buffer)
+            else:
+                gather_all_buffer = [None] * self.strategy.world_size
+                dist.gather_object(self.all_buffer)
+                import pandas as pd
+                pd.to_pickle(
+                    gather_all_buffer, os.path.join(self.save_path, "all_buffer.pkl")
+                )
+
+        if self.strategy.is_rank_0():
+            self._wandb.finish() if self._wandb else None
+            lp.stop()
 
     def prepare_data(self, strategy, tokenizer):
         """
@@ -867,8 +1029,8 @@ class SelfPlayLearner(PPOLearner):
         """
         # Create dummy dataset that satisfies OAT's requirements
         # but doesn't actually load any data
-        # Used to control the training episode, set a large number.
-        self.prompts_dataset = DummyPromptDataset(size=int(1e9))
+        # Size based on max_train to ensure proper progress tracking
+        self.prompts_dataset = DummyPromptDataset(size=self.args.max_train)
         self.eval_prompts_dataset = DummyPromptDataset(size=self.args.eval_games)
 
         # Create the dataloaders
