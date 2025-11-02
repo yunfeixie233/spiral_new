@@ -15,24 +15,30 @@
 # Common =========
 export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"):$LD_LIBRARY_PATH
 export NCCL_CUMEM_ENABLE=0
-export NCCL_TIMEOUT=3600000
+export NCCL_TIMEOUT=7200000
 
 # Verify NCCL timeout is set
 echo "NCCL_TIMEOUT is set to: $NCCL_TIMEOUT milliseconds"
 
 export LP_DEBUG=1
 export LP_LOG_LEVEL=DEBUG
-SCRIPT_NAME=$(basename "$0" .sh)
 
 # Notes ==========
 # Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
 # Set `--eval_opponent_names google/gemini-2.0-flash-lite-001` if you have OpenRouter access.
+# Evaluation control:
+#   --skip_game_eval to skip game evaluation (speeds up training)
+#   --skip_dataset_eval to skip dataset evaluation (speeds up training)
+
+# Get script name without path and extension for wb-run-name
+SCRIPT_NAME=$(basename "$0" .sh)
+
 pkill -u ubuntu python
-python train_spiral_eval.py \
-    --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 \
-    --use_llm_obs_wrappers True True False False \
-    --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1\
-    --eval_use_llm_obs_wrappers  True True False False  \
+python train_spiral.py \
+    --env_ids SimpleNegotiation-v1 \
+    --use_llm_obs_wrappers True \
+    --eval_env_ids TicTacToe-v0 KuhnPoker-v1 SimpleNegotiation-v1 PigDice-v1 \
+    --eval_use_llm_obs_wrappers False True True False \
     --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
     --gamma 1 \
@@ -63,12 +69,12 @@ python train_spiral_eval.py \
     --temperature 1.0 \
     --top_p 1 \
     --eval_steps 32 \
-    --save_steps 32 \
+    --save_steps 16 \
     --eval_games 16 \
     --eval_temperature 0.6 \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \
-    --max_train 256000 \
+    --max_train 25600 \
     --max_ckpt_save_num 2 \
     --max_weight_save_num 200 \
     --use-wb \
@@ -77,6 +83,4 @@ python train_spiral_eval.py \
     --save-ckpt \
     --debug \
     --skip_game_eval \
-    --skip_dataset_eval \
-    --resume_dir /ephemeral/games-workspace/spiral_new/oat-output/run_4b_4env_noresume_1028T0731/checkpoints \
-    --resume_tag step_00288
+    --skip_dataset_eval

@@ -27,18 +27,34 @@ SCRIPT_NAME=$(basename "$0" .sh)
 # Notes ==========
 # Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
 # Set `--eval_opponent_names google/gemini-2.0-flash-lite-001` if you have OpenRouter access.
+# `--env_sampling_mode`: Controls multi-env trajectory collection strategy
+#   - "split" (default): Split trajectories evenly across all envs (balanced multi-task)
+#   - "random": Randomly pick ONE env per step for all trajectories (curriculum learning)
+# 
+# Dr. GRPO Configuration:
+# `--critic_type drgrpo`: Use Dr. GRPO (removes length and difficulty bias)
+# `--num_samples 8`: Generate 8 responses per prompt (REQUIRED for GRPO to work)
+# Note: use_role_baseline defaults to True, need to disable it to avoid double baseline
+# 
+# WARNING: This configuration may not work optimally with self-play because:
+#   - Self-play generates trajectories from different games (not same prompt)
+#   - Dr.GRPO expects to group trajectories from the same prompt
+#   - Consider using --critic_type reinforce with --use_role_baseline True instead
 pkill -u ubuntu python
 python train_spiral_eval.py \
+    --critic_type drgrpo \
     --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 \
     --use_llm_obs_wrappers True True False False \
     --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1\
     --eval_use_llm_obs_wrappers  True True False False  \
     --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
+    --env_sampling_mode random \
     --gamma 1 \
     --gpus 8 \
     --gradient-checkpointing \
-    --num_samples 1 \
+    --num_samples 8 \
+    --use-role-baseline False \
     --rollout_batch_size 128 \
     --dump_game_state_every 1 \
     --num_envs 1 \
@@ -68,7 +84,7 @@ python train_spiral_eval.py \
     --eval_temperature 0.6 \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \
-    --max_train 256000 \
+    --max_train 128000 \
     --max_ckpt_save_num 2 \
     --max_weight_save_num 200 \
     --use-wb \
@@ -77,6 +93,5 @@ python train_spiral_eval.py \
     --save-ckpt \
     --debug \
     --skip_game_eval \
-    --skip_dataset_eval \
-    --resume_dir /ephemeral/games-workspace/spiral_new/oat-output/run_4b_4env_noresume_1028T0731/checkpoints \
-    --resume_tag step_00288
+    --skip_dataset_eval 
+

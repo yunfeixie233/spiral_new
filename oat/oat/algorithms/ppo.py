@@ -217,11 +217,12 @@ class PPOLearner(RLLearner):
         super()._init(args, actors)
         self.args = args
         self.dataset_builder = TransitionDataset
-        self.masked_aggregator = (
-            functools.partial(masked_sum, constant_normalizer=args.generate_max_length)
-            if args.critic_type == "drgrpo"
-            else masked_mean
-        )
+        if args.critic_type in ["drgrpo", "reinforce"]:
+            self.masked_aggregator = functools.partial(
+                masked_sum, constant_normalizer=args.generate_max_length
+            )
+        else:
+            self.masked_aggregator = masked_mean
 
     def learn(self, learning_round: int):
         torch.cuda.synchronize()
@@ -344,10 +345,16 @@ class PPOLearner(RLLearner):
     def compute_monte_carlo_advantages(self, rewards, response_masks):
         del response_masks
         rewards = rewards.sum(-1)
-        # Compute monte carlo trajectory-level advantage
+        
+        if self.args.critic_type == "reinforce":
+            # REINFORCE: No baseline, just return raw rewards
+            return rewards
+        
+        # Compute monte carlo trajectory-level advantage with baseline
         values = rewards.view(-1, self.args.num_samples).mean(dim=1)
         values = values.repeat_interleave(self.args.num_samples, dim=0)
         advantages = rewards - values
+        
         if self.args.critic_type == "grpo":
             # Additionally normalize by std.
             std_grouped_rewards = rewards.view(-1, self.args.num_samples).std(dim=1)
@@ -355,6 +362,7 @@ class PPOLearner(RLLearner):
                 self.args.num_samples, dim=0
             )
             advantages = advantages / (std_grouped_rewards + 1e-8)
+        
         return advantages
 
     def learning_step(self, trajectory):
@@ -456,7 +464,7 @@ class PPOLearner(RLLearner):
             advantages, returns, values = self.compute_ppo_advantages(
                 rewards, input_ids, att_mask, response_masks
             )
-        elif self.args.critic_type in ["grpo", "drgrpo"]:
+        elif self.args.critic_type in ["grpo", "drgrpo", "reinforce"]:
             advantages = self.compute_monte_carlo_advantages(rewards, response_masks)[
                 :, None
             ]

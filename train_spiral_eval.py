@@ -81,8 +81,12 @@ class SelfPlayArgs(PPOArgs):
     filter_zero_adv: bool = (
         True  # Make gradient less noisy by filtering zero-gradient trajectories
     )
-    use_role_baseline: bool = True  # Use role baseline for reward shaping
+    use_role_baseline: bool = field(
+        default=True, metadata={"help": "Use role baseline for reward shaping"}
+    )
     role_baseline_ema_gamma: float = 0.95
+    env_sampling_mode: Literal["split", "random"] = "split"  # split: balanced across envs, random: cycle through envs per step (step % num_envs)
+    
 
     # Game evaluation
     eval_games: int = 16  # Number of games for evaluation
@@ -227,46 +231,78 @@ class SelfPlayActor(PPOActor):
         # Play multiple games to generate trajectory data
         st = time.time()
         
-        # Calculate trajectories per environment
         total_trajectories = len(prompts)
-        num_envs = len(self.args.env_ids)
-        base_trajectories_per_env = total_trajectories // num_envs
-        remainder = total_trajectories % num_envs
-        
-        # Distribute trajectories evenly, with remainder distributed to first few envs
-        trajectories_per_env = {}
-        for idx, env_id in enumerate(self.args.env_ids):
-            trajectories_per_env[env_id] = base_trajectories_per_env + (1 if idx < remainder else 0)
-        
-        logging.info(f"Trajectories per environment: {trajectories_per_env}")
-        
-        # Collect trajectories for each environment separately
         all_trajectories = []
-        env_ids = copy.deepcopy(self.args.env_ids)
-        random.shuffle(env_ids)
         
-        for env_id in env_ids:
-            target_count = trajectories_per_env[env_id]
-            env_trajectories = []
+        if self.args.env_sampling_mode == "random":
+            # Random mode: Deterministically select ONE environment per step using modulo
+            # This ensures all actors in DDP select the same environment at the same step
+            env_index = self.step_count % len(self.args.env_ids)
+            selected_env_id = self.args.env_ids[env_index]
+            logging.info(f"Actor-{self.actor_id} [env_sampling_mode=random] Step {self.step_count} -> env_index {env_index} -> {selected_env_id} for all {total_trajectories} trajectories")
             
+            env_trajectories = []
             for i in range(int(1e9)):
                 game_trajectories = self.play_game_vectorized(
-                    env_id=env_id, seed=int(time.time_ns())
+                    env_id=selected_env_id, seed=int(time.time_ns())
                 )
                 env_trajectories.extend(game_trajectories)
                 
-                if len(env_trajectories) >= target_count:
+                if len(env_trajectories) >= total_trajectories:
                     # Subsample to exact target count
                     subsample_indices = np.random.choice(
                         len(env_trajectories),
-                        target_count,
+                        total_trajectories,
                         replace=False,
                     )
                     env_trajectories = [env_trajectories[si] for si in subsample_indices]
                     break
             
             all_trajectories.extend(env_trajectories)
-            logging.info(f"Collected {len(env_trajectories)} trajectories from {env_id}")
+            logging.info(f"Actor-{self.actor_id} Collected {len(env_trajectories)} trajectories from {selected_env_id}")
+            
+        elif self.args.env_sampling_mode == "split":
+            # Split mode: Distribute trajectories evenly across all environments (default)
+            num_envs = len(self.args.env_ids)
+            base_trajectories_per_env = total_trajectories // num_envs
+            remainder = total_trajectories % num_envs
+            
+            # Distribute trajectories evenly, with remainder distributed to first few envs
+            trajectories_per_env = {}
+            for idx, env_id in enumerate(self.args.env_ids):
+                trajectories_per_env[env_id] = base_trajectories_per_env + (1 if idx < remainder else 0)
+            
+            logging.info(f"[env_sampling_mode=split] Trajectories per environment: {trajectories_per_env}")
+            
+            # Collect trajectories for each environment separately
+            env_ids = copy.deepcopy(self.args.env_ids)
+            random.shuffle(env_ids)
+            
+            for env_id in env_ids:
+                target_count = trajectories_per_env[env_id]
+                env_trajectories = []
+                
+                for i in range(int(1e9)):
+                    game_trajectories = self.play_game_vectorized(
+                        env_id=env_id, seed=int(time.time_ns())
+                    )
+                    env_trajectories.extend(game_trajectories)
+                    
+                    if len(env_trajectories) >= target_count:
+                        # Subsample to exact target count
+                        subsample_indices = np.random.choice(
+                            len(env_trajectories),
+                            target_count,
+                            replace=False,
+                        )
+                        env_trajectories = [env_trajectories[si] for si in subsample_indices]
+                        break
+                
+                all_trajectories.extend(env_trajectories)
+                logging.info(f"Collected {len(env_trajectories)} trajectories from {env_id}")
+        
+        else:
+            raise ValueError(f"Invalid env_sampling_mode: {self.args.env_sampling_mode}. Must be 'split' or 'random'.")
 
         info["actor/game_time"] = time.time() - st
         info["actor/num_trajectories"] = len(all_trajectories)
@@ -854,14 +890,6 @@ class SelfPlayLearner(PPOLearner):
         if actors:
             self.collector = SelfPlayCollector(args, actors, self.collector.ipc_client)
 
-        # Masked sum is the correct implementation!
-        # Oat by default uses Dr.GRPO: https://arxiv.org/pdf/2503.20783
-        self.masked_aggregator = (
-            functools.partial(masked_sum, constant_normalizer=args.generate_max_length)
-            if args.critic_type == "drgrpo"
-            else masked_mean
-        )
-        
         # Track initial step for resume
         self.initial_step = 0
     
@@ -1085,11 +1113,6 @@ class SelfPlayLearner(PPOLearner):
         # Update query step (for tracking progress)
         self.query_step += len(data_list)
 
-    def compute_monte_carlo_advantages(self, rewards, response_masks):
-        del response_masks
-        # Return without baseline
-        rewards = rewards.sum(-1)
-        return rewards
 
     def evaluate(self, _unused_dataloader, steps):
         """

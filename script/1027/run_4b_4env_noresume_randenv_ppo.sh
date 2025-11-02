@@ -27,15 +27,37 @@ SCRIPT_NAME=$(basename "$0" .sh)
 # Notes ==========
 # Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
 # Set `--eval_opponent_names google/gemini-2.0-flash-lite-001` if you have OpenRouter access.
+# `--env_sampling_mode`: Controls multi-env trajectory collection strategy
+#   - "split" (default): Split trajectories evenly across all envs (balanced multi-task)
+#   - "random": Randomly pick ONE env per step for all trajectories (curriculum learning)
+# 
+# PPO Configuration:
+# `--critic_type ppo`: Use PPO with value function (critic network)
+# `--num_samples 1`: One trajectory per game (works with PPO)
+# `--use_role_baseline True`: Use role-specific baseline for variance reduction
+# `--critic_pretrain`: Critic network initialized from policy model (default)
+# `--lam 0.95`: GAE lambda parameter for advantage estimation
+# `--vf_coef 1.0`: Value function loss coefficient
+# 
+# This configuration uses PPO with:
+#   - GAE for advantage estimation (lower variance than REINFORCE)
+#   - Separate critic network trained to predict returns
+#   - Role baseline for additional variance reduction
 pkill -u ubuntu python
 python train_spiral_eval.py \
+    --critic_type ppo \
     --env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1 \
     --use_llm_obs_wrappers True True False False \
     --eval_env_ids KuhnPoker-v1 SimpleNegotiation-v1 TicTacToe-v1 PigDice-v1\
     --eval_use_llm_obs_wrappers  True True False False  \
     --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
+    --env_sampling_mode random \
     --gamma 1 \
+    --lam 0.95 \
+    --vf_coef 1.0 \
+    --cliprange 0.2 \
+    --cliprange_value 0.2 \
     --gpus 8 \
     --gradient-checkpointing \
     --num_samples 1 \
@@ -51,6 +73,7 @@ python train_spiral_eval.py \
     --vllm_gpu_ratio 0.45 \
     --rnd-seed \
     --learning_rate 0.000001 \
+    --critic_learning_rate 0.000009 \
     --lr_scheduler constant \
     --lr_warmup_ratio 0 \
     --num_ppo_epochs 2 \
@@ -68,7 +91,7 @@ python train_spiral_eval.py \
     --eval_temperature 0.6 \
     --eval_top_p 0.95 \
     --eval_generate_max_length 4096 \
-    --max_train 256000 \
+    --max_train 128000 \
     --max_ckpt_save_num 2 \
     --max_weight_save_num 200 \
     --use-wb \
@@ -77,6 +100,5 @@ python train_spiral_eval.py \
     --save-ckpt \
     --debug \
     --skip_game_eval \
-    --skip_dataset_eval \
-    --resume_dir /ephemeral/games-workspace/spiral_new/oat-output/run_4b_4env_noresume_1028T0731/checkpoints \
-    --resume_tag step_00288
+    --skip_dataset_eval 
+

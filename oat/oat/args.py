@@ -108,7 +108,7 @@ class OATArgs:
     preference_flip_prob: float = 0
 
     # Critic.
-    critic_type: Literal["ppo", "grpo", "drgrpo"] = "drgrpo"
+    critic_type: Literal["ppo", "grpo", "drgrpo", "reinforce"] = "drgrpo"
 
     # Epistemic reward model (for exploration).
     num_ensemble: int = 20

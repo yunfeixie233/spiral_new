@@ -12,12 +12,14 @@ export CUDA_VISIBLE_DEVICES=1
 
 SCRIPT_NAME=$(basename "$0" .sh)
 
+# Change to workspace root
+cd /ephemeral/games-workspace/spiral_new
 
 python train_spiral_eval.py \
     --env_ids SimpleNegotiation-v1 \
     --use_llm_obs_wrappers True \
-    --eval_env_ids TicTacToe-v0 KuhnPoker-v1 SimpleNegotiation-v1 PigDice-v1 \
-    --eval_use_llm_obs_wrappers False True True False \
+    --eval_env_ids SimpleTak-v0 IndianPoker-v1 \
+    --eval_use_llm_obs_wrappers False True \
     --eval_opponent_names google/gemini-2.0-flash-lite-001 \
     --eval_split all \
     --gamma 1 \
@@ -61,5 +63,5 @@ python train_spiral_eval.py \
     --wb-project spiral \
     --save-ckpt \
     --eval_only \
-    --skip_game_eval
+    --skip_dataset_eval
 
