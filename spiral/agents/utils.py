@@ -220,6 +220,28 @@ def indian_poker_parse_available_actions(observation: str):
     
     return valid_actions
 
+def truth_and_deception_parse_available_actions(observation: str):
+    """
+    Parse available actions for Truth and Deception game.
+    
+    The game has two phases:
+    1. Conversation phase: Any text message wrapped in <answer> tags is valid
+    2. Guessing phase: Only [Fact 1] and [Fact 2] wrapped in <answer> tags are valid
+    
+    Args:
+        observation: The current game observation
+        
+    Returns:
+        List of valid action strings (full format with <think> and <answer> tags)
+    """
+    # Check if we're in the guessing phase by looking for the guessing prompt
+    guessing_prompt = "Now guess which of the two facts are correct by returning '[Fact 1]' or '[Fact 2]'."
+    
+    if guessing_prompt in observation:
+        # We're in the guessing phase - only [Fact 1] and [Fact 2] are valid
+        return ["[Fact 1]", "[Fact 2]"]
+    else:
+        return []
 
 def simple_tak_parse_available_actions(observation: str):
     """
@@ -263,6 +285,7 @@ _VALID_ACTION_PARSER = {
     "ColonelBlotto-v1": colonel_blotto_parse_available_actions,
     "IndianPoker-v1": indian_poker_parse_available_actions,
     "SimpleTak-v0": simple_tak_parse_available_actions,
+    "TruthAndDeception-v2": truth_and_deception_parse_available_actions,
 }
 
 

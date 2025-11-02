@@ -56,6 +56,7 @@ def get_strategy(args):
         train_batch_size=getattr(args, "train_batch_size", 128),
         zero_stage=args.zero_stage,
         bf16=getattr(args, "bf16", True),
+        fp16=getattr(args, "fp16", False),
         args=args,
     )
     return args, strategy
@@ -66,6 +67,7 @@ def get_train_ds_config(
     adam_offload=True,
     stage=2,
     bf16=True,
+    fp16=False,
     max_norm=1.0,
     zpg=8,
     grad_accum_dtype=None,
@@ -99,12 +101,10 @@ def get_train_ds_config(
     if stage == 3:
         zero_opt_dict["reduce_scatter"] = True
 
-    return {
+    # Base config
+    ds_config = {
         "steps_per_print": 100,
         "zero_optimization": zero_opt_dict,
-        "bf16": {
-            "enabled": bf16,
-        },
         "gradient_clipping": max_norm,
         "prescale_gradients": False,
         "wall_clock_breakdown": False,
@@ -119,12 +119,33 @@ def get_train_ds_config(
             "autotp_size": tensor_parallel_size,
         },
     }
+    
+    # Add precision-specific config
+    if bf16:
+        # BF16: Simple config, no loss scaling needed (wider dynamic range)
+        ds_config["bf16"] = {"enabled": True}
+    elif fp16:
+        # FP16: Needs dynamic loss scaling (narrower dynamic range)
+        ds_config["fp16"] = {
+            "enabled": True,
+            "loss_scale": 0,  # 0 = dynamic loss scaling
+            "initial_scale_power": 12,  # 2^12=4096, conservative for RL
+            "loss_scale_window": 1000,
+            "hysteresis": 2,
+            "min_loss_scale": 1,
+        }
+    else:
+        # FP32: No special config needed
+        pass
+    
+    return ds_config
 
 
 def get_eval_ds_config(
     offload,
     stage=0,
     bf16=True,
+    fp16=False,
     deepcompile=False,
     tensor_parallel_size=1,
 ):
@@ -143,12 +164,10 @@ def get_eval_ds_config(
             "pin_memory": True,
         },
     }
-    return {
+    # Base config
+    ds_config = {
         "steps_per_print": 100,
         "zero_optimization": zero_opt_dict,
-        "bf16": {
-            "enabled": bf16,
-        },
         "gradient_clipping": 1.0,
         "prescale_gradients": False,
         "wall_clock_breakdown": False,
@@ -159,6 +178,26 @@ def get_eval_ds_config(
             "autotp_size": tensor_parallel_size,
         },
     }
+    
+    # Add precision-specific config
+    if bf16:
+        # BF16: Simple config, no loss scaling needed (wider dynamic range)
+        ds_config["bf16"] = {"enabled": True}
+    elif fp16:
+        # FP16: Needs dynamic loss scaling (narrower dynamic range)
+        ds_config["fp16"] = {
+            "enabled": True,
+            "loss_scale": 0,  # 0 = dynamic loss scaling
+            "initial_scale_power": 12,  # 2^12=4096, conservative for RL
+            "loss_scale_window": 1000,
+            "hysteresis": 2,
+            "min_loss_scale": 1,
+        }
+    else:
+        # FP32: No special config needed
+        pass
+    
+    return ds_config
 
 
 def get_optimizer_grouped_parameters(
@@ -214,6 +253,7 @@ class DeepspeedStrategy(ABC):
         train_batch_size=1,
         zero_stage=2,
         bf16=True,
+        fp16=False,
         args: OATArgs = None,
     ) -> None:
         super().__init__()
@@ -223,6 +263,7 @@ class DeepspeedStrategy(ABC):
         self.train_batch_size = train_batch_size
         self.train_batch_size_per_device = train_batch_size_per_device
         self.bf16 = bf16
+        self.fp16 = fp16
         self.seed = seed
         self.max_norm = max_norm
         self.adam_offload = getattr(args, "adam_offload", False)
@@ -300,11 +341,13 @@ class DeepspeedStrategy(ABC):
     ) -> None:
         if isinstance(model, LLM):
             model = model.model
-        grad_norm = torch.tensor(0.0)
+        grad_norm = torch.tensor(0.0, dtype=torch.float32)
         for p in model.module.parameters():
             grad = safe_get_full_grad(p)
             if grad is not None:
-                grad_norm += grad.norm(2).cpu() ** 2
+                # Convert to float32 before computing norm to avoid fp16 numerical issues
+                grad_fp32 = grad.float()
+                grad_norm += grad_fp32.norm(2).cpu() ** 2
         grad_norm = grad_norm.sqrt()
         return grad_norm
 
@@ -384,10 +427,11 @@ class DeepspeedStrategy(ABC):
 
     def get_ds_train_config(self, is_wrapped):
         ds_config = get_train_ds_config(
-            offload=False,
+            offload=self.args.model_offload,
             adam_offload=self.adam_offload,
             stage=self.stage,
             bf16=self.bf16,
+            fp16=self.fp16,
             max_norm=self.max_norm,
             zpg=self.zpg,
             grad_accum_dtype=self.grad_accum_dtype,
@@ -419,7 +463,7 @@ class DeepspeedStrategy(ABC):
     def get_ds_eval_config(self, offload=False):
         # DS Config
         ds_config = get_eval_ds_config(
-            offload=offload, stage=self.stage if self.stage == 3 else 0, bf16=self.bf16
+            offload=offload, stage=self.stage if self.stage == 3 else 0, bf16=self.bf16, fp16=self.fp16
         )
         ds_config["train_micro_batch_size_per_gpu"] = self.train_batch_size_per_device
         ds_config["train_batch_size"] = self.train_batch_size

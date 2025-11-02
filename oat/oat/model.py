@@ -42,6 +42,7 @@ class LLM(nn.Module):
         pretrain_or_model,
         use_flash_attention_2=False,
         bf16=True,
+        fp16=False,
         load_in_4bit=False,
         lora_rank=0,
         lora_alpha=16,
@@ -58,7 +59,8 @@ class LLM(nn.Module):
             )
 
             if load_in_4bit:
-                assert bf16, "we only support bnb_4bit_compute_dtype = bf16"
+                # 4-bit quantization: use bf16 for compute dtype (fp16 not well supported by bitsandbytes)
+                assert bf16, "4-bit quantization requires bf16 (not compatible with fp16)"
                 nf4_config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_quant_type="nf4",
@@ -76,12 +78,13 @@ class LLM(nn.Module):
                 zero_init_context = contextlib.nullcontext()
 
             with zero_init_context:
+                torch_dtype = torch.bfloat16 if bf16 else torch.float16 if fp16 else torch.float32
                 self.model = AutoModelForCausalLM.from_pretrained(
                     pretrain_or_model,
                     trust_remote_code=True,
                     attn_implementation=attn_implementation,
                     quantization_config=nf4_config,
-                    torch_dtype=torch.bfloat16 if bf16 else "auto",
+                    torch_dtype=torch_dtype,
                     device_map=device_map,
                 )
 
@@ -224,6 +227,7 @@ class Critic(nn.Module):
         pretrain_or_model,
         use_flash_attention_2=False,
         bf16=True,
+        fp16=False,
         load_in_4bit=False,
         lora_rank=0,
         lora_alpha=16,
@@ -261,11 +265,12 @@ class Critic(nn.Module):
                 base_class, base_class.__base__, value_head_prefix
             )
 
+            torch_dtype = torch.bfloat16 if bf16 else torch.float16 if fp16 else "auto"
             self.model = critic_cls.from_pretrained(
                 pretrain_or_model,
                 config=config,
                 trust_remote_code=True,
-                torch_dtype=torch.bfloat16 if bf16 else "auto",
+                torch_dtype=torch_dtype,
                 quantization_config=nf4_config,
                 device_map=device_map,
             )
@@ -303,6 +308,8 @@ class Critic(nn.Module):
                 self.model = get_peft_model(self.model, lora_config)
 
                 if load_in_4bit:
+                    # 4-bit + LoRA: set dtypes (bf16 required for 4-bit)
+                    target_dtype = torch.bfloat16  # 4-bit always uses bf16
                     for name, module in self.model.named_modules():
                         if isinstance(module, LoraLayer):
                             module = module.to(torch.bfloat16)
@@ -310,7 +317,7 @@ class Critic(nn.Module):
                             module = module.to(torch.float32)
                         if "lm_head" in name or "embed_tokens" in name:
                             if hasattr(module, "weight"):
-                                module = module.to(torch.bfloat16)
+                                module = module.to(target_dtype)
 
             # MoE - balancing loss
             model_config = self.model.config.to_dict()

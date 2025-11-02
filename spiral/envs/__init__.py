@@ -90,7 +90,11 @@ register(
     max_rounds=10,
     error_allowance=3,
 )
-
+register(
+    id="TruthAndDeception-v2",
+    entry_point="spiral.envs.TruthAndDeception.env:TruthAndDeceptionEnv",
+    max_turns=6,
+)
 
 def make_env(env_id: str, use_llm_obs_wrapper: bool):
     # Use -raw variant to avoid double-wrapping with TextArena's default wrappers

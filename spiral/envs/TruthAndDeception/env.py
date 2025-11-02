@@ -1,5 +1,6 @@
 import importlib.resources
 import json
+import logging
 import os
 import random
 import re
@@ -12,31 +13,59 @@ from textarena.envs.TruthAndDeception.renderer import create_board_str
 class TruthAndDeceptionEnv(ta.Env):
     """Environment for Truth and Deception Game"""
 
-    def __init__(self, max_turns: Optional[int] = 5, data_path: Optional[str] = None):
+    def __init__(self, max_turns: Optional[int] = 5, data_path: Optional[str] = None, max_retry: Optional[int] = 3):
         """
         Initialize the Truth and Deception game.
 
         Roles:
-            - Player 0 is the deceiver
+            - Player 0 is the deceiver (gets potentially incorrect information about which fact is correct)
             - Player 1 is the guesser
 
         Args:
             max_turns (int): Maximum number of conversation turns.
             data_path (str): Path to the JSON file containing the facts.
+            max_retry (int): Maximum number of retries when <answer> parsing fails.
         """
         assert (
             max_turns % 2 == 0
         ), f"Please use an even number of max turns. Current max_turns: {max_turns}"
 
         self.max_turns = max_turns
+        self.max_retry = max_retry
         self._load_facts(data_path=data_path)
 
         self.guess_fact1_pattern = re.compile(r"\[Fact 1\]", re.IGNORECASE)
         self.guess_fact2_pattern = re.compile(r"\[Fact 2\]", re.IGNORECASE)
+        self.answer_pattern = re.compile(r"<answer>(.*?)</answer>", re.IGNORECASE | re.DOTALL)
+
+    def _parse_answer_from_action(self, action: str) -> str:
+        """
+        Parse <answer> tags from action. If no tags found, return the original action.
+        This serves as a safety net in case the training pipeline doesn't parse.
+        
+        Args:
+            action: Raw action string, potentially containing <think> and <answer> tags
+            
+        Returns:
+            Parsed action with only the content from <answer> tags, or original action if no tags
+        """
+        if not action:
+            return action
+            
+        # Try to extract content from <answer> tags
+        answer_match = self.answer_pattern.search(action)
+        if answer_match:
+            parsed_content = answer_match.group(1).strip()
+            logging.debug(f"Environment parsed <answer> content: '{parsed_content[:50]}...'")
+            return parsed_content
+        else:
+            # No <answer> tags found, return original action
+            # This handles cases where action is already parsed by training pipeline
+            return action
 
     def get_board_str(self):
         return create_board_str(game_state=self.state.game_state)
-
+    
     def _load_facts(self, data_path: Optional[str]) -> None:
         """Load the facts from the specified JSON file.
 
@@ -52,56 +81,60 @@ class TruthAndDeceptionEnv(ta.Env):
                 with open(data_path, "r", encoding="utf-8") as file:
                     self.facts_data = json.load(file)
             else:
-                with (
-                    importlib.resources.files("textarena.envs.TruthAndDeception")
-                    .joinpath("facts.json")
-                    .open("r") as file
-                ):
+                files = importlib.resources.files("textarena.envs.TruthAndDeception")
+                with files.joinpath("facts.json").open("r") as file:
                     self.facts_data = json.load(file)
         except Exception as e:
             raise FileNotFoundError(f"Failed to load facts data: {str(e)}")
 
-    def _generate_player_prompt(
-        self, player_id: int, game_state: Dict[int, Any]
+    def _prompt(
+        self, player_id: int, game_state: Dict[str, Any]
     ) -> str:
         """Generate the initial prompt for a player"""
-        prompt = f"You are Player {player_id}, and you are the {self.state.role_mapping[player_id]} in the 'Truth and Deception' game.\n"
-        if self.state.role_mapping[player_id] == "Deceiver":
+        # Internal role mapping for game logic (not exposed in observations)
+        internal_roles = {0: "Deceiver", 1: "Guesser"}
+        player_role = internal_roles[player_id]
+        
+        prompt = f"You are Player {player_id}, and you are the {player_role} in a game.\n"
+        if player_role == "Deceiver":
+            # For the Deceiver, use the potentially incorrect information
             prompt += (
                 f"You know which of the following two facts is correct:\n"
-                f"Fact 1: {game_state['fact1']['fact']} ({'correct' if game_state['fact1']['is_correct'] else 'wrong'})\n"
-                f"Fact 2: {game_state['fact2']['fact']} ({'correct' if game_state['fact2']['is_correct'] else 'wrong'})\n"
+                f"Fact 1: {game_state['fact1']['fact']} ({'correct' if game_state['deceiver_told_fact1_correct'] else 'wrong'})\n"
+                f"Fact 2: {game_state['fact2']['fact']} ({'correct' if game_state['deceiver_told_fact2_correct'] else 'wrong'})\n"
                 "Your goal is to convince the other player to choose the incorrect fact.\n"
                 f"You will have a conversation for {self.state.max_turns - 1} turns.\n"
                 "After that, the other player will make their guess.\n"
-                "On your turn, simply type your message."
+                "On your turn, the reasoning process is enclosed within <think> </think> and message to the guesser is enclosed within <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> message to the guesser here </answer>.<|im_end|>\n"
             )
-        elif self.state.role_mapping[player_id] == "Guesser":
+        elif player_role == "Guesser":
             prompt += (
                 f"You need to determine which of the following two facts is correct:\n"
                 f"Fact 1: {game_state['fact1']['fact']}\n"
                 f"Fact 2: {game_state['fact2']['fact']}\n"
                 f"You will have a conversation with the other player for {self.state.max_turns - 2} turns.\n"
+                "What the other player said may be right or wrong.\n"
                 "After that, you will make your guess.\n"
-                "On your turn, simply type your message."
+                "On your turn, the reasoning process is enclosed within <think> </think> and message to the other player is enclosed within <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> message to the other player here </answer>.<|im_end|>\n"
             )
         else:
             raise ValueError(
-                f"Unexpected role mapping: {self.state.role_mapping[player_id]}. Expected 'Deceiver' or 'Guesser'."
+                f"Unexpected role: {player_role}. Expected 'Deceiver' or 'Guesser'."
             )
         return prompt
 
     def reset(self, num_players: int, seed: Optional[int] = None):
         """Reset the game to its initial state."""
         # Initialize game state
-        self.state = ta.State(
-            num_players=2,
-            min_players=2,
-            max_players=2,
+        self.state = ta.TwoPlayerState(
+            num_players=num_players,
             max_turns=self.max_turns,
-            check_truncated=False,
-            role_mapping={0: "Deceiver", 1: "Guesser"},
+            seed=seed
         )
+
+        # Set random seed if provided for reproducible results
+        if seed is not None:
+            random.seed(seed)
 
         selected_facts = random.choice(self.facts_data)
 
@@ -117,19 +150,40 @@ class TruthAndDeceptionEnv(ta.Env):
         ]
         random.shuffle(facts)
 
-        self.state.reset(
-            seed=seed,
-            game_state={
-                "fact1": {"fact": facts[0][0], "is_correct": facts[0][1]},
-                "fact2": {"fact": facts[1][0], "is_correct": facts[1][1]},
-                "correct_fact": facts[0][0] if facts[0][1] else facts[1][0],
-                "wrong_fact": facts[0][0] if facts[1][1] else facts[1][0],
-            },
-            player_prompt_function=self._generate_player_prompt,
-        )
+        # Determine what the Deceiver will be told (50% chance of being correct)
+        deceiver_info_is_correct = random.choice([True, False])
+        
+        if deceiver_info_is_correct:
+            # Tell the Deceiver the correct information
+            deceiver_told_fact1_correct = facts[0][1]
+            deceiver_told_fact2_correct = facts[1][1]
+        else:
+            # Tell the Deceiver the opposite (incorrect information)
+            deceiver_told_fact1_correct = not facts[0][1]
+            deceiver_told_fact2_correct = not facts[1][1]
 
+        game_state = {
+            "fact1": {"fact": facts[0][0], "is_correct": facts[0][1]},
+            "fact2": {"fact": facts[1][0], "is_correct": facts[1][1]},
+            "correct_fact": facts[0][0] if facts[0][1] else facts[1][0],
+            "wrong_fact": facts[0][0] if facts[1][1] else facts[1][0],
+            # What the Deceiver is told about which facts are correct
+            "deceiver_told_fact1_correct": deceiver_told_fact1_correct,
+            "deceiver_told_fact2_correct": deceiver_told_fact2_correct,
+            # Whether the information given to the Deceiver is actually correct
+            "deceiver_info_is_correct": deceiver_info_is_correct,
+        }
+        self.state.reset(
+            game_state=game_state,
+            player_prompt_function=self._prompt,
+            role_mapping={0: "Deceiver", 1: "Guesser"}
+        )
+        
     def step(self, action: str) -> Tuple[bool, ta.Info]:
         """Process the player's action"""
+        
+        # Safety net: Parse <answer> tags if present, otherwise use raw action
+        parsed_action = self._parse_answer_from_action(action)
 
         conversation_turns = self.state.max_turns - 2
 
@@ -137,9 +191,8 @@ class TruthAndDeceptionEnv(ta.Env):
         if self.state.turn < conversation_turns:
             self.state.add_observation(
                 from_id=self.state.current_player_id,
-                to_id=-1,
-                message=action,
-                for_logging=True,
+                message=parsed_action,
+                observation_type=ta.ObservationType.PLAYER_ACTION
             )
             return self.state.step()
 
@@ -150,9 +203,8 @@ class TruthAndDeceptionEnv(ta.Env):
             # Add Deceiver's final conversation message
             self.state.add_observation(
                 from_id=self.state.current_player_id,
-                to_id=-1,
-                message=action,
-                for_logging=True,
+                message=parsed_action,
+                observation_type=ta.ObservationType.PLAYER_ACTION
             )
 
             # Normal step to rotate to Guesser
@@ -162,7 +214,8 @@ class TruthAndDeceptionEnv(ta.Env):
             if not done:
                 message = "Now guess which of the two facts are correct by returning '[Fact 1]' or '[Fact 2]'."
                 self.state.add_observation(
-                    from_id=ta.GAME_ID, to_id=-1, message=message, for_logging=True
+                    message=message,
+                    observation_type=ta.ObservationType.GAME_MESSAGE
                 )
 
             return done, info
@@ -170,48 +223,44 @@ class TruthAndDeceptionEnv(ta.Env):
         elif self.state.turn == conversation_turns + 1:
             if self.state.current_player_id != 1:
                 self.state.set_invalid_move(
-                    player_id=self.state.current_player_id,
-                    reason="Only the Guesser can make the final guess.",
+                    reason="Only the Guesser can make the final guess."
                 )
                 return self.state.step()
 
             self.state.add_observation(
                 from_id=self.state.current_player_id,
-                to_id=-1,
-                message=action,
-                for_logging=True,
+                message=parsed_action,
+                observation_type=ta.ObservationType.PLAYER_ACTION
             )
 
             if self.guess_fact1_pattern.search(
-                action
-            ) or self.guess_fact2_pattern.search(action):
-                # evaluate guess
+                parsed_action
+            ) or self.guess_fact2_pattern.search(parsed_action):
+                # Evaluate guess based on the REAL correct fact, not what the Deceiver was told
                 if (
-                    self.guess_fact1_pattern.search(action)
+                    self.guess_fact1_pattern.search(parsed_action)
                     and self.state.game_state["fact1"]["is_correct"]
                 ) or (
-                    self.guess_fact2_pattern.search(action)
+                    self.guess_fact2_pattern.search(parsed_action)
                     and self.state.game_state["fact2"]["is_correct"]
                 ):
-                    # correct guess
-                    winner_ids = [self.state.current_player_id]
+                    # Correct guess - Guesser wins
+                    winner_id = self.state.current_player_id
                     reason = (
                         f"Player {self.state.current_player_id} guessed correct fact."
                     )
                 else:
-                    # wrong guess
-                    winner_ids = [1 - self.state.current_player_id]
+                    # Wrong guess - Deceiver wins
+                    winner_id = 1 - self.state.current_player_id
                     reason = (
                         f"Player {self.state.current_player_id} guessed the wrong fact."
                     )
 
-                # set state winner
-                self.state.set_winners(player_ids=winner_ids, reason=reason)
+                # Set state winner
+                self.state.set_winner(player_id=winner_id, reason=reason)
             else:
                 reason = f"Player {self.state.current_player_id} did not make their guess in the correct format."
-                self.state.set_invalid_move(
-                    player_id=self.state.current_player_id, reason=reason
-                )
+                self.state.set_invalid_move(reason=reason)
 
             return self.state.step()
 
@@ -219,8 +268,7 @@ class TruthAndDeceptionEnv(ta.Env):
         else:
             self.state.add_observation(
                 from_id=self.state.current_player_id,
-                to_id=-1,
-                message=action,
-                for_logging=True,
+                message=parsed_action,
+                observation_type=ta.ObservationType.PLAYER_ACTION
             )
             return self.state.step()
