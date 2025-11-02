@@ -36,32 +36,32 @@ class TruthAndDeceptionEnv(ta.Env):
 
         self.guess_fact1_pattern = re.compile(r"\[Fact 1\]", re.IGNORECASE)
         self.guess_fact2_pattern = re.compile(r"\[Fact 2\]", re.IGNORECASE)
-        self.answer_pattern = re.compile(r"<answer>(.*?)</answer>", re.IGNORECASE | re.DOTALL)
+        self.boxed_pattern = re.compile(r"\\boxed\{((?:[^{}]|\{[^{}]*\})*)\}", re.DOTALL)
 
     def _parse_answer_from_action(self, action: str) -> str:
         """
-        Parse <answer> tags from action. If no tags found, return the original action.
+        Parse \boxed{...} from action. If no tags found, return the original action.
         This serves as a safety net in case the training pipeline doesn't parse.
         
         Args:
-            action: Raw action string, potentially containing <think> and <answer> tags
+            action: Raw action string, potentially containing thinking and \boxed{...}
             
         Returns:
-            Parsed action with only the content from <answer> tags, or original action if no tags
+            Parsed action with only the content from \boxed{...}, or original action if no tags
         """
         if not action:
             return action
             
-        # Try to extract content from <answer> tags
-        answer_match = self.answer_pattern.search(action)
-        if answer_match:
-            parsed_content = answer_match.group(1).strip()
-            logging.debug(f"Environment parsed <answer> content: '{parsed_content[:50]}...'")
+        # Extract content from \boxed{...}
+        boxed_match = self.boxed_pattern.search(action)
+        if boxed_match:
+            parsed_content = boxed_match.group(1).strip()
+            logging.debug(f"Environment parsed \\boxed content: '{parsed_content[:50]}...'")
             return parsed_content
-        else:
-            # No <answer> tags found, return original action
-            # This handles cases where action is already parsed by training pipeline
-            return action
+        
+        # No tags found, return original action
+        # This handles cases where action is already parsed by training pipeline
+        return action
 
     def get_board_str(self):
         return create_board_str(game_state=self.state.game_state)
@@ -105,7 +105,7 @@ class TruthAndDeceptionEnv(ta.Env):
                 "Your goal is to convince the other player to choose the incorrect fact.\n"
                 f"You will have a conversation for {self.state.max_turns - 1} turns.\n"
                 "After that, the other player will make their guess.\n"
-                "On your turn, the reasoning process is enclosed within <think> </think> and message to the guesser is enclosed within <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> message to the guesser here </answer>.<|im_end|>\n"
+                "On your turn, you can think about your strategy, then put your message to the guesser inside \\boxed{your message here}.\n"
             )
         elif player_role == "Guesser":
             prompt += (
@@ -115,7 +115,7 @@ class TruthAndDeceptionEnv(ta.Env):
                 f"You will have a conversation with the other player for {self.state.max_turns - 2} turns.\n"
                 "What the other player said may be right or wrong.\n"
                 "After that, you will make your guess.\n"
-                "On your turn, the reasoning process is enclosed within <think> </think> and message to the other player is enclosed within <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> message to the other player here </answer>.<|im_end|>\n"
+                "On your turn, you can think about the facts, then put your message to the other player inside \\boxed{your message here}.\n"
             )
         else:
             raise ValueError(
@@ -212,7 +212,7 @@ class TruthAndDeceptionEnv(ta.Env):
 
             # Show guessing prompt to Guesser
             if not done:
-                message = "Now guess which of the two facts are correct by returning '[Fact 1]' or '[Fact 2]'."
+                message = "Now guess which of the two facts are correct by returning '\\boxed{[Fact 1]}' or '\\boxed{[Fact 2]}'."
                 self.state.add_observation(
                     message=message,
                     observation_type=ta.ObservationType.GAME_MESSAGE
@@ -233,15 +233,17 @@ class TruthAndDeceptionEnv(ta.Env):
                 observation_type=ta.ObservationType.PLAYER_ACTION
             )
 
-            if self.guess_fact1_pattern.search(
-                parsed_action
-            ) or self.guess_fact2_pattern.search(parsed_action):
+            # Check if the guess is in the correct format
+            guess_fact1 = self.guess_fact1_pattern.search(parsed_action)
+            guess_fact2 = self.guess_fact2_pattern.search(parsed_action)
+            
+            if guess_fact1 or guess_fact2:
                 # Evaluate guess based on the REAL correct fact, not what the Deceiver was told
                 if (
-                    self.guess_fact1_pattern.search(parsed_action)
+                    guess_fact1
                     and self.state.game_state["fact1"]["is_correct"]
                 ) or (
-                    self.guess_fact2_pattern.search(parsed_action)
+                    guess_fact2
                     and self.state.game_state["fact2"]["is_correct"]
                 ):
                     # Correct guess - Guesser wins

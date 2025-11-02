@@ -225,22 +225,26 @@ def truth_and_deception_parse_available_actions(observation: str):
     Parse available actions for Truth and Deception game.
     
     The game has two phases:
-    1. Conversation phase: Any text message wrapped in <answer> tags is valid
-    2. Guessing phase: Only [Fact 1] and [Fact 2] wrapped in <answer> tags are valid
+    1. Conversation phase: Any text message is valid (return empty to skip validation)
+    2. Guessing phase: Only [Fact 1] or [Fact 2] are valid
+    
+    Note: The model wraps messages in \boxed{...}, but extract_chat_action extracts the content.
+    This function returns the valid extracted content (what's inside the box).
+    The environment validates that the extracted content contains exactly [Fact 1] or [Fact 2].
     
     Args:
         observation: The current game observation
         
     Returns:
-        List of valid action strings (full format with <think> and <answer> tags)
+        List of valid action strings (extracted content, not including \boxed{})
     """
     # Check if we're in the guessing phase by looking for the guessing prompt
-    guessing_prompt = "Now guess which of the two facts are correct by returning '[Fact 1]' or '[Fact 2]'."
-    
-    if guessing_prompt in observation:
-        # We're in the guessing phase - only [Fact 1] and [Fact 2] are valid
+    if "Now guess which of the two facts are correct" in observation:
+        # We're in the guessing phase - only these exact strings are valid
+        # These are what should be INSIDE \boxed{}, i.e., model outputs \boxed{[Fact 1]}
         return ["[Fact 1]", "[Fact 2]"]
     else:
+        # In conversation phase, return empty list (any message is valid)
         return []
 
 def simple_tak_parse_available_actions(observation: str):

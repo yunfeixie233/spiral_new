@@ -424,7 +424,7 @@ class SelfPlayActor(PPOActor):
                         done = True
                     vec_done[i] = done
                     if done and action == INVALID_ACTION:
-                        rewards = {0: 0.5, 1: 0.5}
+                        rewards = {0: 0, 1: 0}
                         rewards[player_id] = -1.5
                         vec_rewards[i] = rewards
 
@@ -556,8 +556,9 @@ class SelfPlayActor(PPOActor):
             # - SimpleNegotiation-v1: unbounded offer amounts
             # - IndianPoker-v1: betting amounts 1 to chip_count
             # - TwoDollar-v1: proposal amounts $0.00 to $2.00
+            # - TruthAndDeception-v2: unbounded conversation content
             # All other environments use finite action space parsing
-            if env_id in ["DontSayIt-v0", "IndianPoker-v1", "TwoDollar-v1"]:
+            if env_id in ["DontSayIt-v0", "IndianPoker-v1", "TwoDollar-v1", "TruthAndDeception-v2"]:
                 clean_action = self.extract_chat_action(raw_action)
             else:
                 action_space = get_valid_action_parser(env_id)(observation)
