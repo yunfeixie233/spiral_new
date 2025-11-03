@@ -10,8 +10,9 @@ class TruthAndDeceptionEnv(ta.Env):
         assert max_turns%2==0, f"Please use an even number of max turns. Current max_turns: {max_turns}"
         self.max_turns = max_turns
         self._load_facts(data_path=data_path)
-        self.guess_fact1_pattern = re.compile(r"\[Fact 1\]", re.IGNORECASE)
-        self.guess_fact2_pattern = re.compile(r"\[Fact 2\]", re.IGNORECASE)
+        # Match both "Fact 1" and "[Fact 1]" (with or without brackets)
+        self.guess_fact1_pattern = re.compile(r"(?:\[Fact\s+1\]|Fact\s+1)", re.IGNORECASE)
+        self.guess_fact2_pattern = re.compile(r"(?:\[Fact\s+2\]|Fact\s+2)", re.IGNORECASE)
 
     def get_board_str(self):
         return create_board_str(game_state=self.state.game_state)
@@ -68,6 +69,13 @@ class TruthAndDeceptionEnv(ta.Env):
         return prompt 
 
     def step(self, action: str) -> Tuple[bool, ta.Info]:
+        # During conversation phase, reject responses that look like guesses
+        if self.state.turn < self.state.max_turns-1:
+            if self.guess_fact1_pattern.search(action) or self.guess_fact2_pattern.search(action):
+                reason = f"Player {self.state.current_player_id} cannot guess during the conversation phase. Please engage in conversation."
+                self.state.set_invalid_move(reason=reason)
+                return self.state.step()
+        
         self.state.add_observation(from_id=self.state.current_player_id, message=action, observation_type=ta.ObservationType.PLAYER_ACTION)
         if self.state.turn == self.state.max_turns-2:  # check if the guessing phase has started
             self.state.add_observation(message="Now guess which of the two facts are correct by returning '[Fact 1]' or '[Fact 2]'.", observation_type=ta.ObservationType.GAME_MESSAGE) 

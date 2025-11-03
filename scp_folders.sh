@@ -8,9 +8,9 @@ SSH_OPTS="-i $KEY_FILE -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/nu
 
 # List of folders to copy
 FOLDERS=(
-    "/ephemeral/games-workspace/spiral_new/oat-output/run_4b_4env_noresume_randenv_1101T1544/saved_models"
-    "/ephemeral/games-workspace/spiral_new/oat-output/run_pig_noeval_1025T1515/saved_models"
-    "/ephemeral/games-workspace/spiral_new/oat-output/run_tic_noeval_1024T0722/saved_models"
+    # "/ephemeral/games-workspace/spiral_new/oat-output/run_4b_4env_noresume_randenv_1101T1544/saved_models"
+    # "/ephemeral/games-workspace/spiral_new/oat-output/run_pig_noeval_1025T1515/saved_models"
+    "/ephemeral/games-workspace/spiral_new/oat-output/4b_sim_1103T0021/saved_models"
 
     # Add more folders here, one per line
     # "/ephemeral/games-workspace/spiral_new/oat-output/another_folder"

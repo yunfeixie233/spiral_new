@@ -34,8 +34,9 @@ class TruthAndDeceptionEnv(ta.Env):
         self.max_retry = max_retry
         self._load_facts(data_path=data_path)
 
-        self.guess_fact1_pattern = re.compile(r"\[Fact 1\]", re.IGNORECASE)
-        self.guess_fact2_pattern = re.compile(r"\[Fact 2\]", re.IGNORECASE)
+        # Match both "Fact 1" and "[Fact 1]" (with or without brackets)
+        self.guess_fact1_pattern = re.compile(r"(?:\[Fact\s+1\]|Fact\s+1)", re.IGNORECASE)
+        self.guess_fact2_pattern = re.compile(r"(?:\[Fact\s+2\]|Fact\s+2)", re.IGNORECASE)
         self.boxed_pattern = re.compile(r"\\boxed\{((?:[^{}]|\{[^{}]*\})*)\}", re.DOTALL)
 
     def _parse_answer_from_action(self, action: str) -> str:
@@ -104,7 +105,10 @@ class TruthAndDeceptionEnv(ta.Env):
                 f"Fact 2: {game_state['fact2']['fact']} ({'correct' if game_state['deceiver_told_fact2_correct'] else 'wrong'})\n"
                 "Your goal is to convince the other player to choose the incorrect fact.\n"
                 f"You will have a conversation for {self.state.max_turns - 1} turns.\n"
-                "After that, the other player will make their guess.\n"
+                "After that, the other player will make their guess.\n\n"
+                "IMPORTANT: During the conversation, DO NOT directly state '[Fact 1]' or '[Fact 2]' in your messages. "
+                "Instead, discuss the facts using reasoning, examples, or explanations to persuade the guesser. "
+                "Only the guesser will state '[Fact 1]' or '[Fact 2]' in the final guessing round.\n\n"
                 "On your turn, you can think about your strategy, then put your message to the guesser inside \\boxed{your message here}.\n"
             )
         elif player_role == "Guesser":
@@ -114,7 +118,10 @@ class TruthAndDeceptionEnv(ta.Env):
                 f"Fact 2: {game_state['fact2']['fact']}\n"
                 f"You will have a conversation with the other player for {self.state.max_turns - 2} turns.\n"
                 "What the other player said may be right or wrong.\n"
-                "After that, you will make your guess.\n"
+                "After that, you will make your guess.\n\n"
+                "IMPORTANT: During the conversation, DO NOT directly state '[Fact 1]' or '[Fact 2]' in your messages. "
+                "Instead, ask questions and discuss the facts to gather information. "
+                "You will only state '[Fact 1]' or '[Fact 2]' when prompted for your final guess.\n\n"
                 "On your turn, you can think about the facts, then put your message to the other player inside \\boxed{your message here}.\n"
             )
         else:
@@ -189,6 +196,12 @@ class TruthAndDeceptionEnv(ta.Env):
 
         # Normal conversation phase
         if self.state.turn < conversation_turns:
+            # During conversation, reject responses that look like guesses
+            if self.guess_fact1_pattern.search(parsed_action) or self.guess_fact2_pattern.search(parsed_action):
+                reason = f"Player {self.state.current_player_id} cannot guess during the conversation phase. Please engage in conversation."
+                self.state.set_invalid_move(reason=reason)
+                return self.state.step()
+            
             self.state.add_observation(
                 from_id=self.state.current_player_id,
                 message=parsed_action,
@@ -200,6 +213,12 @@ class TruthAndDeceptionEnv(ta.Env):
         elif (
             self.state.turn == conversation_turns and self.state.current_player_id == 0
         ):
+            # During Deceiver's final conversation turn, also reject guess-like responses
+            if self.guess_fact1_pattern.search(parsed_action) or self.guess_fact2_pattern.search(parsed_action):
+                reason = f"Player {self.state.current_player_id} cannot guess during the conversation phase. Please engage in conversation."
+                self.state.set_invalid_move(reason=reason)
+                return self.state.step()
+            
             # Add Deceiver's final conversation message
             self.state.add_observation(
                 from_id=self.state.current_player_id,
