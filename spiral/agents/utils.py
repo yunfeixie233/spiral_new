@@ -247,6 +247,157 @@ def truth_and_deception_parse_available_actions(observation: str):
         # In conversation phase, return empty list (any message is valid)
         return []
 
+def coup_parse_available_actions(observation: str):
+    """
+    Parse available actions for Coup game.
+    
+    Coup has multiple phases with different valid actions:
+    1. Play phase: [income], [foreign aid], [coup X], [tax], [assassinate X], [steal X], [exchange]
+    2. QueryForBlockOrChallenge: [PASS], [BULLSHIT], and possibly [block ...] actions
+    3. QueryToChallengeTheBlocker: [PASS] or [BULLSHIT]
+    4. QueryWhichToKeep: [keep card1 card2] or [keep card]
+    
+    Args:
+        observation: The current game observation
+        
+    Returns:
+        List of valid action strings
+    """
+    valid_actions = []
+    
+    # Extract only the current prompt (after last "It is now your turn.") to avoid matching history
+    segments = observation.split('It is now your turn.')
+    current_prompt = segments[-1] if len(segments) > 1 else observation
+    
+    # Phase 1: QueryWhichToKeep - after exchange
+    if "You need to choose which" in current_prompt and "to keep" in current_prompt:
+        # Parse which cards are available from "You now have: " line
+        cards_pattern = r"You now have: (.+?)\."
+        cards_match = re.search(cards_pattern, observation)
+        if cards_match:
+            cards_str = cards_match.group(1)
+            # Extract card names
+            card_names = re.findall(r"(Duke|Assassin|Ambassador|Captain|Contessa)", cards_str)
+            
+            # Determine if we need to keep 1 or 2 cards by checking the instruction
+            # Look for "two cards to keep" or "[keep <card1> <card2>]" pattern
+            if "two cards to keep" in observation or "<card2>" in observation:
+                # Need to keep 2 cards - generate all pairs (including duplicates if player has them)
+                from itertools import combinations_with_replacement
+                # Use set of available cards to avoid impossible combinations
+                unique_cards = sorted(set(card_names))
+                for card1, card2 in combinations_with_replacement(unique_cards, 2):
+                    valid_actions.append(f"[keep {card1} {card2}]")
+            else:
+                # Need to keep 1 card only - only unique cards
+                for card in sorted(set(card_names)):
+                    valid_actions.append(f"[keep {card}]")
+        return valid_actions
+    
+    # Phase 2: QueryForBlockOrChallenge
+    # Extract only the LAST question (after last "It is now your turn.") to avoid matching history
+    # Split by "It is now your turn." and take the last segment
+    segments = observation.split('It is now your turn.')
+    current_prompt = segments[-1] if len(segments) > 1 else observation
+    
+    # Look for lines containing "Do you want to" - extract only up to the end of that line
+    # This avoids matching error messages or previous actions
+    do_you_want_match = re.search(r'(Player #\d+ is attempting[^\n]+).*?(Do you want to[^\?]*\?)', current_prompt, re.DOTALL)
+    if do_you_want_match:
+        # Combine the action description and the question
+        question_text = do_you_want_match.group(1) + ' ' + do_you_want_match.group(2)
+    elif "Do you want to" in current_prompt:
+        # Fallback: find the line containing "Do you want to"
+        for line in current_prompt.split('\n'):
+            if "Do you want to" in line:
+                question_text = line
+                break
+        else:
+            question_text = current_prompt
+    else:
+        question_text = current_prompt
+    
+    if "Do you want to" in question_text:
+        # Always can pass
+        valid_actions.append("[PASS]")
+        
+        # Check if BULLSHIT is available - check in the question only
+        if "[BULLSHIT]" in question_text or "call [BULLSHIT]" in question_text:
+            valid_actions.append("[BULLSHIT]")
+        
+        # Check for block options - check in the question only
+        if "[block foreign aid]" in question_text:
+            valid_actions.append("[block foreign aid]")
+        if "[block steal captain]" in question_text:
+            valid_actions.append("[block steal captain]")
+        if "[block steal ambassador]" in question_text:
+            valid_actions.append("[block steal ambassador]")
+        if "[block assassinate]" in question_text:
+            valid_actions.append("[block assassinate]")
+        
+        return valid_actions
+    
+    # Phase 3: QueryToChallengeTheBlocker
+    if "is blocking with" in current_prompt and "Do you want to call [BULLSHIT] or [PASS]" in current_prompt:
+        return ["[BULLSHIT]", "[PASS]"]
+    
+    # Phase 4: Forced coup (10+ coins)
+    if "You have 10 or more coins and must coup" in current_prompt:
+        # Find all active players
+        player_pattern = r"Player #(\d+) has (\d+) coins"
+        players = []
+        for match in re.finditer(player_pattern, observation):
+            player_id = int(match.group(1))
+            players.append(player_id)
+        
+        # Find our player id
+        our_id_match = re.search(r"You are Player #(\d+)", observation)
+        our_id = int(our_id_match.group(1)) if our_id_match else None
+        
+        # Generate coup actions for all other players
+        for pid in players:
+            if pid != our_id:
+                valid_actions.append(f"[coup {pid}]")
+        return valid_actions
+    
+    # Phase 5: Normal play phase
+    if "What action do you want to take?" in current_prompt or current_prompt.strip().endswith("What action do you want to take?"):
+        # Basic actions always available
+        valid_actions.extend(["[income]", "[foreign aid]"])
+        
+        # Role-based actions
+        valid_actions.extend(["[tax]", "[exchange]"])
+        
+        # Find all active players and our coins
+        player_pattern = r"Player #(\d+) has (\d+) coins"
+        players = []
+        our_coins = 0
+        
+        our_id_match = re.search(r"You are Player #(\d+)\. You have (\d+) coins", observation)
+        if our_id_match:
+            our_id = int(our_id_match.group(1))
+            our_coins = int(our_id_match.group(2))
+        else:
+            our_id = None
+        
+        for match in re.finditer(player_pattern, observation):
+            player_id = int(match.group(1))
+            if player_id != our_id:
+                players.append(player_id)
+        
+        # Targeted actions - need at least 1 other player
+        for pid in players:
+            valid_actions.append(f"[steal {pid}]")
+            if our_coins >= 3:
+                valid_actions.append(f"[assassinate {pid}]")
+            if our_coins >= 7:
+                valid_actions.append(f"[coup {pid}]")
+        
+        return valid_actions
+    
+    # Default: return empty list if phase cannot be determined
+    return []
+
 def simple_tak_parse_available_actions(observation: str):
     """
     Parse available actions for SimpleTak game.
@@ -290,6 +441,7 @@ _VALID_ACTION_PARSER = {
     "IndianPoker-v1": indian_poker_parse_available_actions,
     "SimpleTak-v0": simple_tak_parse_available_actions,
     "TruthAndDeception-v2": truth_and_deception_parse_available_actions,
+    "Coup-v0": coup_parse_available_actions,
 }
 
 

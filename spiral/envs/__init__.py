@@ -96,6 +96,12 @@ register(
     max_turns=6,
 )
 
+# Coup (2-6 player bluffing game)
+register(
+    id="Coup-v0",
+    entry_point="spiral.envs.Coup.env:CoupEnv",
+)
+
 def make_env(env_id: str, use_llm_obs_wrapper: bool):
     # Use -raw variant to avoid double-wrapping with TextArena's default wrappers
     raw_env_id = f"{env_id}-raw"
