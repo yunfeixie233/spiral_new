@@ -1,0 +1,3 @@
+[submodule "env_gen"]
+	path = env_gen
+	url = https://github.com/yunfeixie233/env_gen.git

@@ -187,3 +187,10 @@ evals/benchmarks/*/eval_res*
 evals/game/results*
 
 **.tar.zst
+
+# Large data files
+*.arrow
+oat/data/
+
+# Temporary directories
+tmp*/
